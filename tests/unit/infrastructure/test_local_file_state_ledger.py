@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from strategic_alpha_engine.application.contracts import (
+    AgendaQueueRecord,
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
@@ -90,6 +91,24 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
             updated_at=datetime(2026, 1, 15, 15, 5, tzinfo=timezone.utc),
         )
     ]
+    agenda_queue_records = [
+        AgendaQueueRecord(
+            queue_record_id="queue.research_loop.001.001",
+            source_run_id="research_loop.quality_deterioration.001",
+            iteration_index=1,
+            rank=1,
+            agenda_id="agenda.quality_deterioration.001",
+            family="quality_deterioration",
+            agenda_name="Quality deterioration queue",
+            agenda_status="active",
+            base_priority=0.8,
+            family_score=0.7,
+            adjusted_priority=0.74,
+            selected_for_execution=True,
+            reasons=["base_priority=0.8", "family_score=0.7"],
+            recorded_at=datetime(2026, 1, 15, 15, 6, tzinfo=timezone.utc),
+        )
+    ]
     backlog_entries = [
         ValidationBacklogEntry(
             backlog_entry_id="backlog.validation.001",
@@ -106,18 +125,21 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
 
     candidate_path = ledger.append_candidate_stage_records(candidate_records)
     run_path = ledger.append_run_state_records(run_records)
+    agenda_queue_path = ledger.append_agenda_queue_records(agenda_queue_records)
     family_path = ledger.write_family_stats(family_stats)
     learner_path = ledger.write_family_learner_summaries(learner_summaries)
     backlog_path = ledger.append_validation_backlog_entries(backlog_entries)
 
     assert candidate_path.name == "candidate_stages.jsonl"
     assert run_path.name == "run_states.jsonl"
+    assert agenda_queue_path.name == "agenda_queue.jsonl"
     assert family_path.name == "family_stats.json"
     assert learner_path.name == "family_learner_summaries.json"
     assert backlog_path.name == "validation_backlog.jsonl"
 
     loaded_candidates = ledger.load_candidate_stage_records()
     loaded_runs = ledger.load_run_state_records()
+    loaded_agenda_queue = ledger.load_agenda_queue_records()
     loaded_family_stats = ledger.load_family_stats()
     loaded_learner_summaries = ledger.load_family_learner_summaries()
     loaded_backlog = ledger.load_validation_backlog_entries()
@@ -127,6 +149,7 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
         CandidateLifecycleStage.REJECTED,
     ]
     assert loaded_runs[0].status == RunLifecycleStatus.COMPLETED
+    assert loaded_agenda_queue[0].selected_for_execution is True
     assert loaded_family_stats[0].family == "quality_deterioration"
     assert loaded_family_stats[0].median_stage_a_sharpe == 1.21
     assert loaded_learner_summaries[0].stage_a_pass_rate == 1.0
@@ -138,6 +161,7 @@ def test_local_file_state_ledger_returns_empty_lists_for_missing_manifests(tmp_p
 
     assert ledger.load_candidate_stage_records() == []
     assert ledger.load_run_state_records() == []
+    assert ledger.load_agenda_queue_records() == []
     assert ledger.load_family_stats() == []
     assert ledger.load_family_learner_summaries() == []
     assert ledger.load_validation_backlog_entries() == []

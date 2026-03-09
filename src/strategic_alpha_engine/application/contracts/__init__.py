@@ -10,6 +10,7 @@ from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationSubmission,
 )
 from strategic_alpha_engine.application.contracts.state import (
+    AgendaQueueRecord,
     FamilyLearnerSummary,
     CandidateStageRecord,
     FamilyStatsSnapshot,
@@ -27,6 +28,7 @@ from strategic_alpha_engine.application.contracts.structured_generation import (
 )
 
 __all__ = [
+    "AgendaQueueRecord",
     "CandidateArtifactRecord",
     "CandidateStageRecord",
     "BrainSimulationPollResult",

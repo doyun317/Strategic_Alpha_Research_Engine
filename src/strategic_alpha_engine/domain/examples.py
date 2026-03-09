@@ -52,6 +52,46 @@ def build_sample_research_agenda() -> ResearchAgenda:
     )
 
 
+def build_sample_research_agenda_pool() -> list[ResearchAgenda]:
+    return [
+        build_sample_research_agenda(),
+        ResearchAgenda(
+            agenda_id="agenda.momentum.001",
+            name="Intermediate momentum continuation",
+            family=ResearchFamily.MOMENTUM,
+            priority=0.72,
+            target_region="USA",
+            target_universe="TOP3000",
+            target_horizons=[ResearchHorizon.MEDIUM],
+            motivation=(
+                "Probe continuation signals with volatility-aware normalization and "
+                "conservative operator limits."
+            ),
+            constraints=["require_outer_rank", "prefer_medium_lookbacks"],
+            tags=["momentum", "price", "medium_horizon"],
+            owner="system",
+            status="active",
+        ),
+        ResearchAgenda(
+            agenda_id="agenda.liquidity_stress.001",
+            name="Liquidity stress under reaction",
+            family=ResearchFamily.LIQUIDITY_STRESS,
+            priority=0.61,
+            target_region="USA",
+            target_universe="TOP3000",
+            target_horizons=[ResearchHorizon.SHORT],
+            motivation=(
+                "Explore whether liquidity stress and turnover bursts create short-horizon "
+                "dislocations under conservative controls."
+            ),
+            constraints=["keep_expression_bounded", "avoid_trade_when"],
+            tags=["liquidity", "short_horizon", "stress"],
+            owner="system",
+            status="backlog",
+        ),
+    ]
+
+
 def build_sample_hypothesis_spec() -> HypothesisSpec:
     return HypothesisSpec(
         hypothesis_id="hyp.quality_deterioration.001",

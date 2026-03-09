@@ -264,6 +264,7 @@ def test_status_command_summarizes_local_ledgers(tmp_path, capsys):
     assert payload["loop_status"]["current_state"] == "not_started"
     assert payload["agenda_status"]["latest_family"] == "quality_deterioration"
     assert payload["validation_backlog"]["total_entries"] == 0
+    assert payload["agenda_queue"]["total_entries"] == 0
     assert payload["candidate_stage_counts"]["sim_passed"] == 4
     assert payload["runs"]["counts_by_kind"]["simulate"] == 1
     assert payload["family_stats"][0]["sim_passed_candidates"] == 4
@@ -339,3 +340,56 @@ def test_policy_command_ranks_families_and_weights_agendas(tmp_path, capsys):
     assert payload["family_recommendations"][0]["family"] == "quality_deterioration"
     assert payload["agenda_recommendations"][0]["agenda_id"] == "agenda.quality_deterioration.001"
     assert payload["agenda_recommendations"][0]["adjusted_priority"] > payload["agenda_recommendations"][1]["adjusted_priority"]
+
+
+def test_research_loop_command_executes_multiple_iterations_and_updates_queue_state(tmp_path, capsys):
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "default.env").write_text(
+        "\n".join(
+            [
+                "SAE_ENV=test",
+                "SAE_REGION=USA",
+                "SAE_UNIVERSE=TOP3000",
+                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+
+    exit_code = main(
+        [
+            "research-loop",
+            "--settings-dir",
+            str(settings_dir),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--iterations",
+            "2",
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["completed_iterations"] == 2
+    assert payload["stopped_reason"] == "completed_requested_iterations"
+    assert payload["iteration_runs"][0]["selected_agenda_id"] == "agenda.quality_deterioration.001"
+    assert payload["iteration_runs"][1]["selected_agenda_id"] == "agenda.momentum.001"
+    assert payload["executed_agenda_ids"] == [
+        "agenda.quality_deterioration.001",
+        "agenda.momentum.001",
+    ]
+
+    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
+    status_captured = capsys.readouterr()
+    status_payload = json.loads(status_captured.out)
+
+    assert status_exit_code == 0
+    assert status_payload["loop_status"]["current_state"] == "idle"
+    assert status_payload["runs"]["counts_by_kind"]["research_loop"] == 2
+    assert status_payload["agenda_queue"]["selected_agenda_id"] == "agenda.momentum.001"
+    assert status_payload["agenda_queue"]["total_entries"] == 3
+    assert status_payload["candidate_stage_counts"]["sim_passed"] == 7

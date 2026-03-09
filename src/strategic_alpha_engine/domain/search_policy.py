@@ -6,6 +6,7 @@ from pydantic import Field, field_validator
 
 from strategic_alpha_engine.domain.base import EngineModel
 from strategic_alpha_engine.domain.common import IDENTIFIER_PATTERN, ensure_unique_sequence
+from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.enums import ResearchFamily
 
 
@@ -51,3 +52,9 @@ class AgendaPriorityRecommendation(EngineModel):
     @classmethod
     def validate_reasons(cls, value: list[str]) -> list[str]:
         return ensure_unique_sequence(value, "reasons")
+
+
+class AgendaSelection(EngineModel):
+    selected_agenda: ResearchAgenda | None = None
+    agenda_recommendations: list[AgendaPriorityRecommendation] = Field(default_factory=list)
+    excluded_agenda_ids: list[str] = Field(default_factory=list, max_length=64)
