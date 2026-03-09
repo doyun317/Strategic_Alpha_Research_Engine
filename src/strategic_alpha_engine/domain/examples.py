@@ -48,7 +48,7 @@ def build_sample_research_agenda() -> ResearchAgenda:
 def build_sample_hypothesis_spec() -> HypothesisSpec:
     return HypothesisSpec(
         hypothesis_id="hyp.quality_deterioration.001",
-        agenda_id="agenda.quality.001",
+        agenda_id="agenda.quality_deterioration.001",
         family=ResearchFamily.QUALITY_DETERIORATION,
         thesis_name="Leverage up, cash generation down",
         economic_rationale=(

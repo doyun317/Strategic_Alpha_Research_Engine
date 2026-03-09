@@ -9,19 +9,12 @@ from strategic_alpha_engine.application.services.interfaces import (
     StaticValidator,
     StrategicCritic,
 )
+from strategic_alpha_engine.application.workflows.plan import PlanWorkflow
+from strategic_alpha_engine.application.workflows.synthesize import CandidateEvaluation, SynthesizeWorkflow
 from strategic_alpha_engine.domain.base import EngineModel
-from strategic_alpha_engine.domain.critique_report import CritiqueReport
-from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
-from strategic_alpha_engine.domain.static_validation import StaticValidationReport
-
-
-class CandidateEvaluation(EngineModel):
-    candidate: ExpressionCandidate
-    validation: StaticValidationReport
-    critique: CritiqueReport | None = None
 
 
 class ResearchOnceResult(EngineModel):
@@ -47,46 +40,28 @@ class ResearchOnceWorkflow:
         self.candidate_synthesizer = candidate_synthesizer
         self.static_validator = static_validator
         self.strategic_critic = strategic_critic
+        self.plan_workflow = PlanWorkflow(
+            hypothesis_planner=hypothesis_planner,
+            blueprint_builder=blueprint_builder,
+        )
+        self.synthesize_workflow = SynthesizeWorkflow(
+            candidate_synthesizer=candidate_synthesizer,
+            static_validator=static_validator,
+            strategic_critic=strategic_critic,
+        )
 
     def run(self, agenda: ResearchAgenda) -> ResearchOnceResult:
-        hypothesis = self.hypothesis_planner.plan(agenda)
-        blueprint = self.blueprint_builder.build(hypothesis)
-        candidates = self.candidate_synthesizer.synthesize(blueprint)
-
-        evaluations: list[CandidateEvaluation] = []
-        accepted: list[str] = []
-        rejected: list[str] = []
-
-        for candidate in candidates:
-            validation = self.static_validator.validate(blueprint, candidate)
-            if not validation.passes:
-                evaluations.append(
-                    CandidateEvaluation(
-                        candidate=candidate,
-                        validation=validation,
-                    )
-                )
-                rejected.append(candidate.candidate_id)
-                continue
-
-            critique = self.strategic_critic.critique(hypothesis, blueprint, candidate)
-            evaluations.append(
-                CandidateEvaluation(
-                    candidate=candidate,
-                    validation=validation,
-                    critique=critique,
-                )
-            )
-            if critique.passes:
-                accepted.append(candidate.candidate_id)
-            else:
-                rejected.append(candidate.candidate_id)
+        plan_result = self.plan_workflow.run(agenda)
+        synthesize_result = self.synthesize_workflow.run(
+            hypothesis=plan_result.hypothesis,
+            blueprint=plan_result.blueprint,
+        )
 
         return ResearchOnceResult(
             agenda=agenda,
-            hypothesis=hypothesis,
-            blueprint=blueprint,
-            evaluations=evaluations,
-            accepted_candidate_ids=accepted,
-            rejected_candidate_ids=rejected,
+            hypothesis=plan_result.hypothesis,
+            blueprint=plan_result.blueprint,
+            evaluations=synthesize_result.evaluations,
+            accepted_candidate_ids=synthesize_result.accepted_candidate_ids,
+            rejected_candidate_ids=synthesize_result.rejected_candidate_ids,
         )
