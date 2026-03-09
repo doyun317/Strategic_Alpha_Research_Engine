@@ -129,6 +129,7 @@ Current implementation includes:
 - metadata-backed static validator before critique
 - prompt assets and golden samples for planner / blueprint / critic roles
 - standalone `plan` and `synthesize` CLI workflows
+- immutable simulation request / run domain models
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic
