@@ -11,6 +11,7 @@ from strategic_alpha_engine.application.services import (
     StaticHypothesisPlanner,
 )
 from strategic_alpha_engine.application.workflows import ResearchOnceWorkflow
+from strategic_alpha_engine.config import load_runtime_settings
 from strategic_alpha_engine.domain import (
     CritiqueReport,
     ExpressionCandidate,
@@ -61,6 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     research_once_parser.add_argument("--out", default=None)
 
+    config_parser = subparsers.add_parser("config", help="Load and print runtime settings")
+    config_parser.add_argument("--settings-dir", default=None)
+    config_parser.add_argument("--require-llm", action="store_true")
+    config_parser.add_argument("--require-brain", action="store_true")
+    config_parser.add_argument("--out", default=None)
+
     return parser
 
 
@@ -101,6 +108,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         result = workflow.run(build_sample_research_agenda())
         payload = result.model_dump()
+        _write_output(payload, args.out)
+        return 0
+
+    if args.command == "config":
+        try:
+            settings = load_runtime_settings(
+                settings_dir=args.settings_dir,
+                require_llm=args.require_llm,
+                require_brain=args.require_brain,
+            )
+        except ValueError as exc:
+            parser.exit(status=2, message=f"{exc}\n")
+        payload = settings.model_dump(mode="json")
         _write_output(payload, args.out)
         return 0
 

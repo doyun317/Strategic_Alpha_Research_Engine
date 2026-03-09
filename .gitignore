@@ -5,6 +5,7 @@ __pycache__/
 .mypy_cache/
 settings/local.env
 settings/llm.env
+settings/brain.env
 dist/
 build/
 *.egg-info/

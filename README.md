@@ -40,17 +40,27 @@ Tracked templates:
 - `settings/default.env`: shareable defaults
 - `settings/local.env.example`: local non-secret overrides template
 - `settings/llm.env.example`: local LLM configuration template
+- `settings/brain.env.example`: local Brain/runtime integration template
 
 Ignored runtime files:
 
 - `settings/local.env`
 - `settings/llm.env`
+- `settings/brain.env`
 
 Create local copies before adding private values:
 
 ```bash
 cp settings/local.env.example settings/local.env
 cp settings/llm.env.example settings/llm.env
+cp settings/brain.env.example settings/brain.env
+```
+
+Inspect resolved runtime settings:
+
+```bash
+python -m strategic_alpha_engine config
+python -m strategic_alpha_engine config --require-llm
 ```
 
 ## Schema Commands
