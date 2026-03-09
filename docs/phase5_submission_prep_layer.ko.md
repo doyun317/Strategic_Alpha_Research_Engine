@@ -91,15 +91,19 @@
 ## 5.1 현재 구현 진척
 
 - `5-1 submission-ready ledger`: 완료
+- `5-2 human review queue`: 완료
 - 현재까지 구현된 내용:
   - `robust_candidate -> submission_ready` 승격 workflow
   - `promote` CLI
   - `submission_ready.jsonl` artifact와 `submission_ready_candidates.jsonl` state ledger
   - `status`의 `submission_ready_inventory` 요약
+  - promote 시점의 pending `human_review_queue`
+  - `review` CLI와 `human_review_decisions.jsonl`
+  - `status`의 `human_review_queue`, `human_review_summary` 요약
 - 다음 작업:
-  - `5-2 human review queue`
-  - review decision 기록과 queue summary
-  - review 이후 submission packet generation으로 이어지는 경계 고정
+  - `5-3 submission packet generation`
+  - review 결과를 포함한 self-contained packet 구성
+  - packet CLI와 runbook 정리
 
 ## 6. 구현 원칙
 
