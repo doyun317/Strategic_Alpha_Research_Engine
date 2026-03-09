@@ -101,6 +101,7 @@ Run simulation and inspect local status:
 # current simulate command uses the fake Brain adapter, evaluates Stage A,
 # and persists local ledgers plus evaluation/promotion artifacts
 python -m strategic_alpha_engine simulate --artifacts-dir artifacts
+python -m strategic_alpha_engine validate --artifacts-dir artifacts --period P3Y0M0D
 python -m strategic_alpha_engine status --artifacts-dir artifacts
 
 # optional: persist the status summary report
@@ -173,10 +174,12 @@ Current implementation includes:
 - Brain simulation client contract and fake adapter
 - simulation orchestrator workflow for critique-passed candidates
 - Stage A evaluation records and rule-based promotion decisions after simulation
+- ValidationRecord domain, validation artifacts, and standalone `validate` CLI
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
 - local agenda queue ledger and bounded `research-loop` execution mode
 - artifact persistence for `evaluations.jsonl` and `promotion.jsonl`
+- validation backlog tracking and validation summary in `status`
 - learner-ready family stats and `family_learner_summaries.json`
 - heuristic family policy recommendations and agenda weighting via `policy`
 - static planner and blueprint builder
