@@ -20,13 +20,21 @@ from strategic_alpha_engine.application.workflows.synthesize import (
     SynthesizeWorkflow,
 )
 from strategic_alpha_engine.application.workflows.validate import (
+    CandidateValidationMatrixRow,
+    MultiPeriodValidateResult,
+    MultiPeriodValidateWorkflow,
     ValidateResult,
     ValidateWorkflow,
+    ValidationMatrixSummary,
     ValidationOutcome,
+    build_validation_matrix,
 )
 
 __all__ = [
     "CandidateEvaluation",
+    "CandidateValidationMatrixRow",
+    "MultiPeriodValidateResult",
+    "MultiPeriodValidateWorkflow",
     "PlanResult",
     "PlanWorkflow",
     "ResearchOnceResult",
@@ -42,5 +50,7 @@ __all__ = [
     "SynthesizeWorkflow",
     "ValidateResult",
     "ValidateWorkflow",
+    "ValidationMatrixSummary",
     "ValidationOutcome",
+    "build_validation_matrix",
 ]

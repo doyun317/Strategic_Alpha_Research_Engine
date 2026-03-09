@@ -11,6 +11,7 @@ from strategic_alpha_engine.application.services import (
     StaticHypothesisPlanner,
 )
 from strategic_alpha_engine.application.workflows import (
+    MultiPeriodValidateWorkflow,
     PlanWorkflow,
     SimulationExecutionPolicy,
     SimulationOrchestratorWorkflow,
@@ -146,8 +147,10 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
     )
     ledger = LocalFileArtifactLedger(tmp_path / "artifacts")
     run_id = "validate.quality_deterioration.001"
-    validate_result = ValidateWorkflow(
-        validation_runner=RuleBasedValidationRunner(),
+    validate_result = MultiPeriodValidateWorkflow(
+        validate_workflow=ValidateWorkflow(
+            validation_runner=RuleBasedValidationRunner(),
+        ),
     ).run(
         source_run_id=run_id,
         candidate_source_run_id="simulate.quality_deterioration.001",
@@ -155,7 +158,7 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
         blueprint=plan_result.blueprint,
         candidates=[evaluation.candidate for evaluation in synthesize_result.evaluations[:2]],
         validation_stage=ValidationStage.STAGE_B,
-        period="P3Y0M0D",
+        periods=["P1Y0M0D", "P3Y0M0D", "P5Y0M0D"],
     )
 
     ledger.write_validation_result(
@@ -166,7 +169,10 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
 
     run_dir = tmp_path / "artifacts" / "runs" / run_id
     validations = _read_jsonl(run_dir / "validations.jsonl")
+    matrix = _read_json(run_dir / "validation_matrix.json")
 
     assert _read_json(run_dir / "agenda.json")["agenda_id"] == "agenda.quality_deterioration.001"
-    assert len(validations) == 2
+    assert len(validations) == 6
     assert validations[0]["candidate"]["candidate_id"] == validations[0]["validation"]["candidate_id"]
+    assert matrix["required_passing_periods"] == 2
+    assert matrix["total_candidates"] == 2
