@@ -134,6 +134,11 @@ class EvaluationStage(str, Enum):
     STAGE_C = "stage_c"
 
 
+class ValidationStage(str, Enum):
+    STAGE_B = "stage_b"
+    STAGE_C = "stage_c"
+
+
 class PromotionDecisionKind(str, Enum):
     PROMOTE = "promote"
     REJECT = "reject"

@@ -12,6 +12,7 @@ from strategic_alpha_engine.application.services.interfaces import (
     SearchPolicyLearner,
     StateLedger,
     StageAEvaluator,
+    ValidationRunner,
     StaticValidator,
     StrategicCritic,
 )
@@ -25,6 +26,9 @@ from strategic_alpha_engine.application.services.rule_based_stage_a import (
     RuleBasedStageAEvaluator,
     RuleBasedStageAPromotionDecider,
     StageAThresholds,
+)
+from strategic_alpha_engine.application.services.rule_based_validation import (
+    RuleBasedValidationRunner,
 )
 from strategic_alpha_engine.application.services.search_policy import (
     FamilyWeightedAgendaPrioritizer,
@@ -56,6 +60,7 @@ __all__ = [
     "RuleBasedStrategicCritic",
     "RuleBasedStageAEvaluator",
     "RuleBasedStageAPromotionDecider",
+    "RuleBasedValidationRunner",
     "SkeletonCandidateSynthesizer",
     "StateLedger",
     "StageAEvaluator",
@@ -64,4 +69,5 @@ __all__ = [
     "StaticBlueprintBuilder",
     "StaticHypothesisPlanner",
     "StrategicCritic",
+    "ValidationRunner",
 ]

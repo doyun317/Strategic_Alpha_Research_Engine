@@ -8,6 +8,7 @@ from strategic_alpha_engine.application.contracts import (
     EvaluationArtifactRecord,
     PromotionArtifactRecord,
     SimulationArtifactRecord,
+    ValidationArtifactRecord,
 )
 from strategic_alpha_engine.application.workflows.plan import PlanResult
 from strategic_alpha_engine.application.workflows.evaluate_stage_a import StageACandidateOutcome, StageAEvaluationResult
@@ -16,6 +17,7 @@ from strategic_alpha_engine.application.workflows.simulate import (
     SimulationOrchestratorResult,
 )
 from strategic_alpha_engine.application.workflows.synthesize import CandidateEvaluation, SynthesizeResult
+from strategic_alpha_engine.application.workflows.validate import ValidateResult, ValidationOutcome
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
@@ -101,6 +103,18 @@ class LocalFileArtifactLedger:
         )
         return run_dir
 
+    def write_validation_records(
+        self,
+        run_id: str,
+        records: list[ValidationArtifactRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "validations.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
     def write_plan_result(self, run_id: str, result: PlanResult) -> Path:
         return self.write_context(
             run_id,
@@ -164,6 +178,27 @@ class LocalFileArtifactLedger:
             ],
         )
 
+    def write_validation_result(
+        self,
+        run_id: str,
+        result: ValidateResult,
+        *,
+        agenda: ResearchAgenda | None = None,
+    ) -> Path:
+        self.write_context(
+            run_id,
+            agenda=agenda,
+            hypothesis=result.hypothesis,
+            blueprint=result.blueprint,
+        )
+        return self.write_validation_records(
+            run_id,
+            records=[
+                self._validation_record_from_outcome(outcome)
+                for outcome in result.outcomes
+            ],
+        )
+
     def _candidate_record_from_evaluation(self, evaluation: CandidateEvaluation) -> CandidateArtifactRecord:
         return CandidateArtifactRecord(
             candidate=evaluation.candidate,
@@ -200,6 +235,15 @@ class LocalFileArtifactLedger:
         return PromotionArtifactRecord(
             evaluation=outcome.evaluation,
             promotion=outcome.promotion,
+        )
+
+    def _validation_record_from_outcome(
+        self,
+        outcome: ValidationOutcome,
+    ) -> ValidationArtifactRecord:
+        return ValidationArtifactRecord(
+            candidate=outcome.candidate,
+            validation=outcome.validation,
         )
 
     def _write_json(self, path: Path, payload: dict) -> None:

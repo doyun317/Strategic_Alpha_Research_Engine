@@ -12,6 +12,7 @@ from strategic_alpha_engine.application.contracts import (
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
+    ValidationBacklogEntry,
 )
 from strategic_alpha_engine.application.services import (
     FamilyWeightedAgendaPrioritizer,
@@ -23,6 +24,7 @@ from strategic_alpha_engine.application.services import (
     RuleBasedStrategicCritic,
     RuleBasedStageAEvaluator,
     RuleBasedStageAPromotionDecider,
+    RuleBasedValidationRunner,
     SkeletonCandidateSynthesizer,
     StaticBlueprintBuilder,
     StaticHypothesisPlanner,
@@ -34,6 +36,7 @@ from strategic_alpha_engine.application.workflows import (
     SimulationOrchestratorWorkflow,
     StageAEvaluationWorkflow,
     SynthesizeWorkflow,
+    ValidateWorkflow,
 )
 from strategic_alpha_engine.config import RuntimeSettings, load_runtime_settings
 from strategic_alpha_engine.domain import (
@@ -43,12 +46,14 @@ from strategic_alpha_engine.domain import (
     SignalBlueprint,
     ResearchAgenda,
     StaticValidationReport,
+    ValidationRecord,
     build_sample_critique_report,
     build_sample_expression_candidate,
     build_sample_hypothesis_spec,
     build_sample_research_agenda,
     build_sample_research_agenda_pool,
     build_sample_signal_blueprint,
+    build_sample_validation_record,
 )
 from strategic_alpha_engine.domain.enums import (
     CandidateLifecycleStage,
@@ -57,6 +62,8 @@ from strategic_alpha_engine.domain.enums import (
     RunKind,
     RunLifecycleStatus,
     SimulationStatus,
+    ValidationBacklogStatus,
+    ValidationStage,
 )
 from strategic_alpha_engine.infrastructure.artifacts import LocalFileArtifactLedger
 from strategic_alpha_engine.infrastructure.brain import FakeBrainSimulationClient
@@ -77,6 +84,15 @@ def _write_output(payload: dict | list, output_path: str | None) -> None:
 
 def _read_input_payload(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _read_jsonl_file(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    content = path.read_text(encoding="utf-8").strip()
+    if not content:
+        return []
+    return [json.loads(line) for line in content.splitlines()]
 
 
 def _load_agenda(path: str | None) -> ResearchAgenda:
@@ -133,6 +149,12 @@ def _build_stage_a_workflow() -> StageAEvaluationWorkflow:
     return StageAEvaluationWorkflow(
         evaluator=RuleBasedStageAEvaluator(),
         promotion_decider=RuleBasedStageAPromotionDecider(),
+    )
+
+
+def _build_validate_workflow(*, base_time: datetime | None = None) -> ValidateWorkflow:
+    return ValidateWorkflow(
+        validation_runner=RuleBasedValidationRunner(base_time=base_time),
     )
 
 
@@ -322,6 +344,173 @@ def _build_stage_counts(candidate_stage_records: list[CandidateStageRecord]) -> 
     return counts
 
 
+def _resolve_validate_source_run_id(
+    state_ledger: LocalFileStateLedger,
+    explicit_run_id: str | None,
+) -> str:
+    if explicit_run_id:
+        return explicit_run_id
+
+    latest_run_records = list(_latest_run_state_records(state_ledger.load_run_state_records()).values())
+    latest_run_records.sort(
+        key=lambda record: record.completed_at or record.started_at,
+        reverse=True,
+    )
+    for record in latest_run_records:
+        if record.run_kind in {RunKind.SIMULATE, RunKind.RESEARCH_LOOP}:
+            return record.run_id
+    raise ValueError("No simulate or research_loop run is available for validation")
+
+
+def _load_validate_inputs(
+    root_dir: str | Path,
+    state_ledger: LocalFileStateLedger,
+    source_candidate_run_id: str,
+    candidate_ids: list[str] | None,
+) -> tuple[ResearchAgenda | None, HypothesisSpec, SignalBlueprint, list[ExpressionCandidate]]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    context = _load_run_context(artifacts_root, source_candidate_run_id)
+    hypothesis_payload = context["hypothesis"]
+    blueprint_payload = context["blueprint"]
+    if hypothesis_payload is None or blueprint_payload is None:
+        raise ValueError("validation source run must have hypothesis and blueprint context")
+
+    candidates_path = artifacts_root / "runs" / source_candidate_run_id / "candidates.jsonl"
+    candidate_fields = set(ExpressionCandidate.model_fields)
+    candidates = [
+        ExpressionCandidate(**{key: value for key, value in payload.items() if key in candidate_fields})
+        for payload in _read_jsonl_file(candidates_path)
+    ]
+    if not candidates:
+        raise ValueError("validation source run must include candidate artifacts")
+
+    eligible_candidate_ids = {
+        record.candidate_id
+        for record in state_ledger.load_candidate_stage_records()
+        if record.source_run_id == source_candidate_run_id and record.stage == CandidateLifecycleStage.SIM_PASSED
+    }
+    requested_candidate_ids = set(candidate_ids or [])
+    if requested_candidate_ids:
+        eligible_candidate_ids &= requested_candidate_ids
+
+    selected_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.candidate_id in eligible_candidate_ids
+    ]
+    if not selected_candidates:
+        raise ValueError("No sim_passed candidates are available for validation from the selected run")
+
+    agenda = ResearchAgenda(**context["agenda"]) if context["agenda"] is not None else None
+    return (
+        agenda,
+        HypothesisSpec(**hypothesis_payload),
+        SignalBlueprint(**blueprint_payload),
+        selected_candidates,
+    )
+
+
+def _build_validation_backlog_entries(
+    *,
+    run_id: str,
+    candidates: list[ExpressionCandidate],
+    family: str,
+    validation_stage: ValidationStage,
+    period: str,
+    created_at: datetime,
+    status: ValidationBacklogStatus,
+    updated_at: datetime | None = None,
+) -> list[ValidationBacklogEntry]:
+    entries: list[ValidationBacklogEntry] = []
+    priority = 0.85 if validation_stage == ValidationStage.STAGE_B else 0.7
+    for candidate in candidates:
+        entries.append(
+            ValidationBacklogEntry(
+                backlog_entry_id=(
+                    f"backlog.{run_id}.{candidate.candidate_id}.{validation_stage.value}.{period}.{status.value}"
+                ),
+                candidate_id=candidate.candidate_id,
+                family=family,
+                requested_period=period,
+                validation_stage=validation_stage.value,
+                priority=priority,
+                status=status,
+                source_run_id=run_id,
+                created_at=created_at,
+                updated_at=updated_at,
+            )
+        )
+    return entries
+
+
+def _latest_validation_backlog_entries(
+    entries: list[ValidationBacklogEntry],
+) -> list[ValidationBacklogEntry]:
+    latest: dict[tuple[str, str, str], ValidationBacklogEntry] = {}
+    for entry in entries:
+        key = (
+            entry.candidate_id,
+            entry.validation_stage,
+            entry.requested_period,
+        )
+        current = latest.get(key)
+        current_timestamp = (current.updated_at or current.created_at) if current is not None else None
+        entry_timestamp = entry.updated_at or entry.created_at
+        if current_timestamp is None or entry_timestamp >= current_timestamp:
+            latest[key] = entry
+    return list(latest.values())
+
+
+def _load_validation_records(
+    root_dir: str | Path,
+    run_state_records: list[RunStateRecord],
+) -> list[ValidationRecord]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    validation_records: list[ValidationRecord] = []
+    for record in _latest_run_state_records(run_state_records).values():
+        if record.run_kind != RunKind.VALIDATE:
+            continue
+        validations_path = artifacts_root / "runs" / record.run_id / "validations.jsonl"
+        for payload in _read_jsonl_file(validations_path):
+            validation_payload = payload.get("validation")
+            if validation_payload is None:
+                continue
+            validation_records.append(ValidationRecord(**validation_payload))
+    return validation_records
+
+
+def _build_validation_summary(validation_records: list[ValidationRecord]) -> dict:
+    if not validation_records:
+        return {
+            "total_records": 0,
+            "passed_records": 0,
+            "failed_records": 0,
+            "counts_by_stage": {},
+            "counts_by_period": {},
+            "latest_run_id": None,
+        }
+
+    counts_by_stage: Counter[str] = Counter(
+        record.validation_stage
+        for record in validation_records
+    )
+    counts_by_period: Counter[str] = Counter(
+        record.period
+        for record in validation_records
+    )
+    latest_record = max(validation_records, key=lambda record: record.validated_at)
+    passed_records = sum(1 for record in validation_records if record.pass_decision)
+
+    return {
+        "total_records": len(validation_records),
+        "passed_records": passed_records,
+        "failed_records": len(validation_records) - passed_records,
+        "counts_by_stage": dict(sorted(counts_by_stage.items())),
+        "counts_by_period": dict(sorted(counts_by_period.items())),
+        "latest_run_id": latest_record.source_run_id,
+    }
+
+
 def _build_simulation_status_counts(simulation_result) -> dict[str, int]:
     counts = {
         status.value: 0
@@ -448,6 +637,8 @@ def _build_status_summary(root_dir: str | Path) -> dict:
     family_stats = state_ledger.load_family_stats()
     learner_summaries = state_ledger.load_family_learner_summaries()
     validation_backlog_entries = state_ledger.load_validation_backlog_entries()
+    latest_validation_backlog_entries = _latest_validation_backlog_entries(validation_backlog_entries)
+    validation_records = _load_validation_records(artifacts_root, run_state_records)
 
     if not family_stats or not learner_summaries:
         analytics_bundle = _build_family_analytics_bundle(artifacts_root, candidate_stage_records)
@@ -481,7 +672,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         recent_stage_counts[record.stage] += 1
         recent_family_counts[record.family] += 1
 
-    backlog_counts: Counter[str] = Counter(entry.status for entry in validation_backlog_entries)
+    backlog_counts: Counter[str] = Counter(entry.status for entry in latest_validation_backlog_entries)
 
     research_loop_records = [
         record
@@ -556,9 +747,10 @@ def _build_status_summary(root_dir: str | Path) -> dict:
             for recommendation in family_recommendations
         ],
         "validation_backlog": {
-            "total_entries": len(validation_backlog_entries),
+            "total_entries": len(latest_validation_backlog_entries),
             "counts_by_status": dict(sorted(backlog_counts.items())),
         },
+        "validation_summary": _build_validation_summary(validation_records),
         "agenda_queue": _build_agenda_queue_summary(agenda_queue_records),
         "candidate_stage_counts": _build_stage_counts(candidate_stage_records),
         "recent_candidate_flow_24h": {
@@ -718,7 +910,7 @@ def build_parser() -> argparse.ArgumentParser:
     schema_parser = subparsers.add_parser("schema", help="Print JSON schema for a model")
     schema_parser.add_argument(
         "--model",
-        choices=["agenda", "hypothesis", "blueprint", "candidate", "critique", "static_validation"],
+        choices=["agenda", "hypothesis", "blueprint", "candidate", "critique", "static_validation", "validation"],
         required=True,
     )
     schema_parser.add_argument("--out", default=None)
@@ -726,7 +918,7 @@ def build_parser() -> argparse.ArgumentParser:
     example_parser = subparsers.add_parser("example", help="Print example payload for a model")
     example_parser.add_argument(
         "--model",
-        choices=["agenda", "hypothesis", "blueprint", "candidate", "critique", "static_validation"],
+        choices=["agenda", "hypothesis", "blueprint", "candidate", "critique", "static_validation", "validation"],
         required=True,
     )
     example_parser.add_argument("--out", default=None)
@@ -796,6 +988,21 @@ def build_parser() -> argparse.ArgumentParser:
     research_loop_parser.add_argument("--max-polls", type=int, default=None)
     research_loop_parser.add_argument("--out", default=None)
 
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Run a rule-based validation pass for sim_passed candidates from a prior run",
+    )
+    validate_parser.add_argument("--artifacts-dir", default="artifacts")
+    validate_parser.add_argument("--source-run-id", default=None)
+    validate_parser.add_argument("--candidate-id", action="append", default=None)
+    validate_parser.add_argument(
+        "--validation-stage",
+        choices=[ValidationStage.STAGE_B.value, ValidationStage.STAGE_C.value],
+        default=ValidationStage.STAGE_B.value,
+    )
+    validate_parser.add_argument("--period", default="P3Y0M0D")
+    validate_parser.add_argument("--out", default=None)
+
     status_parser = subparsers.add_parser("status", help="Summarize local artifact and state ledgers")
     status_parser.add_argument("--artifacts-dir", default="artifacts")
     status_parser.add_argument("--out", default=None)
@@ -841,6 +1048,7 @@ def main(argv: list[str] | None = None) -> int:
             "candidate": ExpressionCandidate.model_json_schema(),
             "critique": CritiqueReport.model_json_schema(),
             "static_validation": StaticValidationReport.model_json_schema(),
+            "validation": ValidationRecord.model_json_schema(),
         }
         payload = schema_map[args.model]
         _write_output(payload, args.out)
@@ -859,6 +1067,7 @@ def main(argv: list[str] | None = None) -> int:
                 build_sample_signal_blueprint(),
                 build_sample_expression_candidate(),
             ).model_dump(),
+            "validation": build_sample_validation_record().model_dump(mode="json"),
         }
         payload = example_map[args.model]
         _write_output(payload, args.out)
@@ -1002,6 +1211,132 @@ def main(argv: list[str] | None = None) -> int:
         }
         _write_output(payload, args.out)
         return 0
+
+    if args.command == "validate":
+        state_ledger = LocalFileStateLedger(args.artifacts_dir)
+        try:
+            source_candidate_run_id = _resolve_validate_source_run_id(
+                state_ledger,
+                args.source_run_id,
+            )
+            agenda, hypothesis, blueprint, candidates = _load_validate_inputs(
+                args.artifacts_dir,
+                state_ledger,
+                source_candidate_run_id,
+                args.candidate_id,
+            )
+        except ValueError as exc:
+            parser.exit(status=2, message=f"{exc}\n")
+
+        validation_stage = ValidationStage(args.validation_stage)
+        run_id = _build_run_id("validate", hypothesis.family)
+        started_at = _utc_now()
+        state_ledger.append_validation_backlog_entries(
+            _build_validation_backlog_entries(
+                run_id=run_id,
+                candidates=candidates,
+                family=hypothesis.family,
+                validation_stage=validation_stage,
+                period=args.period,
+                created_at=started_at,
+                status=ValidationBacklogStatus.PENDING,
+            )
+        )
+        state_ledger.append_run_state_records(
+            [
+                RunStateRecord(
+                    run_id=run_id,
+                    run_kind=RunKind.VALIDATE,
+                    status=RunLifecycleStatus.STARTED,
+                    started_at=started_at,
+                )
+            ]
+        )
+
+        try:
+            result = _build_validate_workflow(base_time=started_at).run(
+                source_run_id=run_id,
+                candidate_source_run_id=source_candidate_run_id,
+                hypothesis=hypothesis,
+                blueprint=blueprint,
+                candidates=candidates,
+                validation_stage=validation_stage,
+                period=args.period,
+            )
+            artifact_ledger = LocalFileArtifactLedger(args.artifacts_dir)
+            artifact_run_dir = artifact_ledger.write_validation_result(
+                run_id,
+                result,
+                agenda=agenda,
+            )
+            completed_at = _utc_now()
+            state_ledger.append_validation_backlog_entries(
+                _build_validation_backlog_entries(
+                    run_id=run_id,
+                    candidates=candidates,
+                    family=hypothesis.family,
+                    validation_stage=validation_stage,
+                    period=args.period,
+                    created_at=started_at,
+                    status=ValidationBacklogStatus.COMPLETED,
+                    updated_at=completed_at,
+                )
+            )
+            state_ledger.append_run_state_records(
+                [
+                    RunStateRecord(
+                        run_id=run_id,
+                        run_kind=RunKind.VALIDATE,
+                        status=RunLifecycleStatus.COMPLETED,
+                        started_at=started_at,
+                        completed_at=completed_at,
+                        candidate_count=len(result.validated_candidate_ids),
+                    )
+                ]
+            )
+
+            payload = {
+                "run_id": run_id,
+                "source_candidate_run_id": source_candidate_run_id,
+                "validation_stage": validation_stage.value,
+                "period": args.period,
+                "validated_candidate_ids": result.validated_candidate_ids,
+                "passed_candidate_ids": result.passed_candidate_ids,
+                "failed_candidate_ids": result.failed_candidate_ids,
+                "artifact_run_dir": str(artifact_run_dir),
+                "state_dir": str(state_ledger.state_directory()),
+                "validation_summary": _build_validation_summary(
+                    [outcome.validation for outcome in result.outcomes]
+                ),
+            }
+            _write_output(payload, args.out)
+            return 0
+        except Exception as exc:
+            state_ledger.append_validation_backlog_entries(
+                _build_validation_backlog_entries(
+                    run_id=run_id,
+                    candidates=candidates,
+                    family=hypothesis.family,
+                    validation_stage=validation_stage,
+                    period=args.period,
+                    created_at=started_at,
+                    status=ValidationBacklogStatus.CANCELLED,
+                    updated_at=_utc_now(),
+                )
+            )
+            state_ledger.append_run_state_records(
+                [
+                    RunStateRecord(
+                        run_id=run_id,
+                        run_kind=RunKind.VALIDATE,
+                        status=RunLifecycleStatus.FAILED,
+                        started_at=started_at,
+                        completed_at=_utc_now(),
+                        error_message=str(exc)[:300],
+                    )
+                ]
+            )
+            raise
 
     if args.command == "status":
         _write_output(_build_status_summary(args.artifacts_dir), args.out)
