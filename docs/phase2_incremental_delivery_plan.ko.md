@@ -113,7 +113,7 @@ git checkout -b phase2/2-3-static-validator
 | 2-8 | `phase2/2-8-simulation-orchestrator` | 11.8 | critique 통과 후보 simulation orchestration 구현 | submit/poll/result 흐름 테스트 통과 | `completed` |
 | 2-9 | `phase2/2-9-local-artifact-ledger` | 12.2 Artifact Store | run artifact를 로컬 JSON/JSONL로 저장 | run_id 기준 artifact 저장 확인 | `completed` |
 | 2-10 | `phase2/2-10-local-state-ledger` | 12.3 State Store | candidate stage / run state / family stats를 로컬 manifest로 저장 | 상태 전이 기록과 재로딩 확인 | `completed` |
-| 2-11 | `phase2/2-11-simulate-and-status-cli` | 14.3, 14.8 실행 모드 | `simulate`, `status` CLI 추가 | simulate 실행과 status summary 출력 가능 | `planned` |
+| 2-11 | `phase2/2-11-simulate-and-status-cli` | 14.3, 14.8 실행 모드 | `simulate`, `status` CLI 추가 | simulate 실행과 status summary 출력 가능 | `completed` |
 | 2-12 | `phase2/2-12-evaluation-record-and-stage-a-promotion` | 11.9, 11.10 | `EvaluationRecord`와 Stage A 승격 구현 | `draft -> critique_passed -> sim_passed` 전이 확인 | `planned` |
 | 3-1 | `phase3/3-1-family-stats-ledger` | Phase 3, 11.11 | family 성과 집계 구조 추가 | family stats 갱신 테스트 통과 | `planned` |
 | 3-2 | `phase3/3-2-search-policy-learner` | 11.11 | heuristic search policy learner 추가 | family weighting / prioritization 테스트 통과 | `planned` |
@@ -190,30 +190,30 @@ git checkout -b phase2/2-3-static-validator
 - 다음 브랜치가 현재 브랜치 결과물을 안정적으로 재사용할 수 있는가
 - 로컬 파일 저장 포맷이 사람이 직접 읽을 수 있는가
 
-## 9. 현재 작업 범위: 2-11
+## 9. 현재 작업 범위: 2-12
 
 다음 브랜치에서 처리할 내용:
 
-- `simulate` CLI 추가
-- `status` CLI 추가
-- artifact/state ledger를 읽는 status summary 출력 고정
+- `EvaluationRecord` 도메인 추가
+- simulation 결과를 Stage A 판단용 기록으로 연결
+- `sim_passed` 후보에 대한 promotion decision 추가
 - 관련 단위 테스트 추가
 
 이번 브랜치에서 일부러 하지 않는 내용:
 
-- 실제 HTTP 구현
-- promotion decision
+- multi-period validation
+- search policy learner
 - family stats 학습 로직
 
-## 10. `2-11` 권장 커밋 단위
+## 10. `2-12` 권장 커밋 단위
 
-1. `simulate` command 연결
-2. `status` summary command 추가
+1. `EvaluationRecord` 계약/도메인 추가
+2. Stage A promotion decision 추가
 3. 테스트 추가
 4. 문서 상태 업데이트
 
 ## 11. `2-12` 진입 조건
 
 - `pytest` 통과
-- CLI에서 simulate 실행과 status summary 출력 확인
-- artifact/state ledger 경로를 읽어 상태 집계가 가능함
+- simulation 결과를 evaluation record로 변환 가능함
+- candidate stage가 `sim_passed` 이후로 확장될 준비가 됨
