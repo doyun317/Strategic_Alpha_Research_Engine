@@ -10,6 +10,7 @@ from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationSubmission,
 )
 from strategic_alpha_engine.application.contracts.state import (
+    FamilyLearnerSummary,
     CandidateStageRecord,
     FamilyStatsSnapshot,
     RunStateRecord,
@@ -35,6 +36,7 @@ __all__ = [
     "BlueprintBuilderPromptOutput",
     "FieldCatalogEntry",
     "EvaluationArtifactRecord",
+    "FamilyLearnerSummary",
     "FamilyStatsSnapshot",
     "HypothesisPlannerPromptInput",
     "HypothesisPlannerPromptOutput",

@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from strategic_alpha_engine.application.contracts import (
     CandidateStageRecord,
+    FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
     ValidationBacklogEntry,
@@ -42,6 +43,30 @@ def test_family_stats_snapshot_rejects_counts_above_total():
         )
 
 
+def test_family_stats_snapshot_rejects_simulation_counts_above_simulation_candidates():
+    with pytest.raises(ValidationError, match="simulation outcome counts must not exceed simulation_candidate_count"):
+        FamilyStatsSnapshot(
+            family="quality_deterioration",
+            total_candidates=4,
+            critique_passed_candidates=3,
+            sim_passed_candidates=2,
+            robust_candidates=0,
+            submission_ready_candidates=0,
+            rejected_candidates=1,
+            simulation_candidate_count=2,
+            simulation_success_count=2,
+            simulation_failed_count=1,
+            simulation_timed_out_count=0,
+            stage_a_evaluation_count=2,
+            stage_a_passed_count=2,
+            critique_pass_rate=0.75,
+            stage_a_pass_rate=1.0,
+            simulation_timeout_rate=0.0,
+            submission_ready_rate=0.0,
+            updated_at=datetime(2026, 1, 15, 15, 0, tzinfo=timezone.utc),
+        )
+
+
 def test_validation_backlog_entry_rejects_invalid_period_shape():
     with pytest.raises(ValidationError, match="requested_period must use an ISO-8601 period shape like P3Y0M0D"):
         ValidationBacklogEntry(
@@ -70,3 +95,20 @@ def test_candidate_stage_record_accepts_timezone_aware_timestamp():
     )
 
     assert record.stage == CandidateLifecycleStage.CRITIQUE_PASSED
+
+
+def test_family_learner_summary_accepts_rate_fields():
+    summary = FamilyLearnerSummary(
+        family="quality_deterioration",
+        total_candidates=8,
+        simulation_candidate_count=4,
+        critique_pass_rate=0.5,
+        stage_a_pass_rate=0.75,
+        simulation_timeout_rate=0.25,
+        submission_ready_rate=0.0,
+        median_stage_a_sharpe=1.12,
+        latest_run_id="run.simulate.001",
+        updated_at=datetime(2026, 1, 15, 15, 0, tzinfo=timezone.utc),
+    )
+
+    assert summary.stage_a_pass_rate == 0.75

@@ -3,12 +3,17 @@ from strategic_alpha_engine.application.services.interfaces import (
     BrainSimulationClient,
     BlueprintBuilder,
     CandidateSynthesizer,
+    FamilyAnalyticsBuilder,
     HypothesisPlanner,
     PromotionDecider,
     StateLedger,
     StageAEvaluator,
     StaticValidator,
     StrategicCritic,
+)
+from strategic_alpha_engine.application.services.family_analytics import (
+    FamilyAnalyticsBundle,
+    LocalArtifactFamilyAnalyticsBuilder,
 )
 from strategic_alpha_engine.application.services.static_validator import MetadataBackedStaticValidator
 from strategic_alpha_engine.application.services.rule_based_critic import RuleBasedStrategicCritic
@@ -28,7 +33,10 @@ __all__ = [
     "BrainSimulationClient",
     "BlueprintBuilder",
     "CandidateSynthesizer",
+    "FamilyAnalyticsBuilder",
+    "FamilyAnalyticsBundle",
     "HypothesisPlanner",
+    "LocalArtifactFamilyAnalyticsBuilder",
     "MetadataBackedStaticValidator",
     "PromotionDecider",
     "RuleBasedStrategicCritic",

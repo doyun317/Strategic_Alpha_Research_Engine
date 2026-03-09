@@ -16,6 +16,7 @@ from strategic_alpha_engine.application.contracts.simulation import (
 )
 from strategic_alpha_engine.application.contracts.state import (
     CandidateStageRecord,
+    FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
     ValidationBacklogEntry,
@@ -83,6 +84,15 @@ class PromotionDecider(Protocol):
     def decide(self, evaluation: EvaluationRecord) -> PromotionDecision: ...
 
 
+class FamilyAnalyticsBuilder(Protocol):
+    def build(
+        self,
+        root_dir: str | Path,
+        *,
+        candidate_stage_records: list[CandidateStageRecord],
+    ): ...
+
+
 class ArtifactLedger(Protocol):
     def write_context(
         self,
@@ -125,6 +135,8 @@ class StateLedger(Protocol):
 
     def write_family_stats(self, snapshots: list[FamilyStatsSnapshot]) -> Path: ...
 
+    def write_family_learner_summaries(self, summaries: list[FamilyLearnerSummary]) -> Path: ...
+
     def append_validation_backlog_entries(self, entries: list[ValidationBacklogEntry]) -> Path: ...
 
     def load_candidate_stage_records(self) -> list[CandidateStageRecord]: ...
@@ -132,5 +144,7 @@ class StateLedger(Protocol):
     def load_run_state_records(self) -> list[RunStateRecord]: ...
 
     def load_family_stats(self) -> list[FamilyStatsSnapshot]: ...
+
+    def load_family_learner_summaries(self) -> list[FamilyLearnerSummary]: ...
 
     def load_validation_backlog_entries(self) -> list[ValidationBacklogEntry]: ...

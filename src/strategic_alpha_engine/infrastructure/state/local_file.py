@@ -5,6 +5,7 @@ from pathlib import Path
 
 from strategic_alpha_engine.application.contracts import (
     CandidateStageRecord,
+    FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
     ValidationBacklogEntry,
@@ -36,6 +37,12 @@ class LocalFileStateLedger:
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         return path
 
+    def write_family_learner_summaries(self, summaries: list[FamilyLearnerSummary]) -> Path:
+        path = self.state_directory() / "family_learner_summaries.json"
+        payload = [summary.model_dump(mode="json") for summary in summaries]
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return path
+
     def append_validation_backlog_entries(self, entries: list[ValidationBacklogEntry]) -> Path:
         path = self.state_directory() / "validation_backlog.jsonl"
         self._append_jsonl(path, [entry.model_dump(mode="json") for entry in entries])
@@ -55,6 +62,13 @@ class LocalFileStateLedger:
             return []
         payload = json.loads(path.read_text(encoding="utf-8"))
         return [FamilyStatsSnapshot(**item) for item in payload]
+
+    def load_family_learner_summaries(self) -> list[FamilyLearnerSummary]:
+        path = self.state_directory() / "family_learner_summaries.json"
+        if not path.exists():
+            return []
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return [FamilyLearnerSummary(**item) for item in payload]
 
     def load_validation_backlog_entries(self) -> list[ValidationBacklogEntry]:
         path = self.state_directory() / "validation_backlog.jsonl"
