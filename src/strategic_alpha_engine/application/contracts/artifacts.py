@@ -12,6 +12,7 @@ from strategic_alpha_engine.domain.critique_report import CritiqueReport
 from strategic_alpha_engine.domain.evaluation import EvaluationRecord
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
 from strategic_alpha_engine.domain.promotion import PromotionDecision
+from strategic_alpha_engine.domain.review import HumanReviewDecision
 from strategic_alpha_engine.domain.common import ensure_unique_sequence
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
 from strategic_alpha_engine.domain.enums import ValidationStage
@@ -165,4 +166,22 @@ class SubmissionReadyArtifactRecord(EngineModel):
             raise ValueError("submission_promotion.hypothesis_id must match candidate.hypothesis_id")
         if self.submission_promotion.blueprint_id != self.candidate.blueprint_id:
             raise ValueError("submission_promotion.blueprint_id must match candidate.blueprint_id")
+        return self
+
+
+class HumanReviewArtifactRecord(EngineModel):
+    submission_ready: SubmissionReadyArtifactRecord
+    review_decision: HumanReviewDecision
+
+    @model_validator(mode="after")
+    def validate_lineage(self) -> "HumanReviewArtifactRecord":
+        candidate = self.submission_ready.candidate
+        if self.review_decision.candidate_id != candidate.candidate_id:
+            raise ValueError("review_decision.candidate_id must match submission_ready.candidate.candidate_id")
+        if self.review_decision.hypothesis_id != candidate.hypothesis_id:
+            raise ValueError("review_decision.hypothesis_id must match submission_ready candidate lineage")
+        if self.review_decision.blueprint_id != candidate.blueprint_id:
+            raise ValueError("review_decision.blueprint_id must match submission_ready candidate lineage")
+        if self.review_decision.submission_ready_source_run_id != self.submission_ready.submission_promotion.source_run_id:
+            raise ValueError("review_decision.submission_ready_source_run_id must match submission_ready promotion")
         return self

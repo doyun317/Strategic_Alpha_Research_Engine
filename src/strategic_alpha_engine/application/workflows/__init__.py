@@ -13,6 +13,11 @@ from strategic_alpha_engine.application.workflows.promote_submission_ready impor
     SubmissionReadyPromotionResult,
     SubmissionReadyPromotionWorkflow,
 )
+from strategic_alpha_engine.application.workflows.review_submission_ready import (
+    HumanReviewOutcome,
+    HumanReviewResult,
+    HumanReviewWorkflow,
+)
 from strategic_alpha_engine.application.workflows.plan import PlanResult, PlanWorkflow
 from strategic_alpha_engine.application.workflows.research_once import (
     ResearchOnceResult,
@@ -42,6 +47,9 @@ from strategic_alpha_engine.application.workflows.validate import (
 
 __all__ = [
     "CandidateEvaluation",
+    "HumanReviewOutcome",
+    "HumanReviewResult",
+    "HumanReviewWorkflow",
     "CandidateValidationMatrixRow",
     "MultiPeriodValidateResult",
     "MultiPeriodValidateWorkflow",

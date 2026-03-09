@@ -8,12 +8,14 @@ from strategic_alpha_engine.application.contracts import (
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
+    HumanReviewQueueRecord,
     RunStateRecord,
     SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.domain.enums import (
     CandidateLifecycleStage,
+    HumanReviewQueueStatus,
     RunKind,
     RunLifecycleStatus,
     ValidationBacklogStatus,
@@ -156,3 +158,20 @@ def test_submission_ready_candidate_record_accepts_timezone_aware_timestamp():
     )
 
     assert record.candidate_id == "cand.quality_deterioration.001"
+
+
+def test_human_review_queue_record_requires_resolution_fields_for_resolved_status():
+    with pytest.raises(ValidationError, match="resolved review queue records must include reviewer, decision_id, and updated_at"):
+        HumanReviewQueueRecord(
+            queue_record_id="review_queue.promote.001.cand.001.held",
+            queue_entry_id="review_queue.promote.001.cand.001",
+            inventory_record_id="submission_ready.promote.001.cand.001",
+            candidate_id="cand.quality_deterioration.001",
+            hypothesis_id="hyp.quality_deterioration.001",
+            blueprint_id="bp.quality_deterioration.001",
+            family="quality_deterioration",
+            submission_ready_source_run_id="promote.quality_deterioration.001",
+            status=HumanReviewQueueStatus.HELD,
+            source_run_id="review.quality_deterioration.001",
+            created_at=datetime(2026, 1, 15, 15, 5, tzinfo=timezone.utc),
+        )

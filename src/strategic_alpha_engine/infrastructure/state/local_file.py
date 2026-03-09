@@ -8,10 +8,12 @@ from strategic_alpha_engine.application.contracts import (
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
+    HumanReviewQueueRecord,
     RunStateRecord,
     SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
+from strategic_alpha_engine.domain.review import HumanReviewDecision
 
 
 class LocalFileStateLedger:
@@ -60,6 +62,16 @@ class LocalFileStateLedger:
         self._append_jsonl(path, [record.model_dump(mode="json") for record in records])
         return path
 
+    def append_human_review_queue_records(self, records: list[HumanReviewQueueRecord]) -> Path:
+        path = self.state_directory() / "human_review_queue.jsonl"
+        self._append_jsonl(path, [record.model_dump(mode="json") for record in records])
+        return path
+
+    def append_human_review_decisions(self, records: list[HumanReviewDecision]) -> Path:
+        path = self.state_directory() / "human_review_decisions.jsonl"
+        self._append_jsonl(path, [record.model_dump(mode="json") for record in records])
+        return path
+
     def load_candidate_stage_records(self) -> list[CandidateStageRecord]:
         path = self.state_directory() / "candidate_stages.jsonl"
         return [CandidateStageRecord(**payload) for payload in self._read_jsonl(path)]
@@ -93,6 +105,14 @@ class LocalFileStateLedger:
     def load_submission_ready_records(self) -> list[SubmissionReadyCandidateRecord]:
         path = self.state_directory() / "submission_ready_candidates.jsonl"
         return [SubmissionReadyCandidateRecord(**payload) for payload in self._read_jsonl(path)]
+
+    def load_human_review_queue_records(self) -> list[HumanReviewQueueRecord]:
+        path = self.state_directory() / "human_review_queue.jsonl"
+        return [HumanReviewQueueRecord(**payload) for payload in self._read_jsonl(path)]
+
+    def load_human_review_decisions(self) -> list[HumanReviewDecision]:
+        path = self.state_directory() / "human_review_decisions.jsonl"
+        return [HumanReviewDecision(**payload) for payload in self._read_jsonl(path)]
 
     def _append_jsonl(self, path: Path, payloads: list[dict]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

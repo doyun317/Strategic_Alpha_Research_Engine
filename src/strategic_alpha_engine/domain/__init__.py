@@ -23,6 +23,7 @@ from strategic_alpha_engine.domain.metadata_catalog import (
 )
 from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
+from strategic_alpha_engine.domain.review import HumanReviewDecision
 from strategic_alpha_engine.domain.search_policy import (
     AgendaSelection,
     AgendaPriorityRecommendation,
@@ -44,6 +45,7 @@ __all__ = [
     "FieldCatalogEntry",
     "FieldMetadata",
     "HypothesisSpec",
+    "HumanReviewDecision",
     "MetadataCatalog",
     "OperatorMetadata",
     "PromotionDecision",

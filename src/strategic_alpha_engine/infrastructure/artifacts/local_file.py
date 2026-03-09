@@ -6,6 +6,7 @@ from pathlib import Path
 from strategic_alpha_engine.application.contracts import (
     CandidateArtifactRecord,
     EvaluationArtifactRecord,
+    HumanReviewArtifactRecord,
     PromotionArtifactRecord,
     SubmissionReadyArtifactRecord,
     SimulationArtifactRecord,
@@ -22,6 +23,10 @@ from strategic_alpha_engine.application.workflows.promote_submission_ready impor
     SubmissionReadyPromotionOutcome,
     SubmissionReadyPromotionResult,
 )
+from strategic_alpha_engine.application.workflows.review_submission_ready import (
+    HumanReviewOutcome,
+    HumanReviewResult,
+)
 from strategic_alpha_engine.application.workflows.simulate import (
     SimulationCandidateExecution,
     SimulationOrchestratorResult,
@@ -33,6 +38,7 @@ from strategic_alpha_engine.application.workflows.validate import (
     ValidationOutcome,
 )
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
+from strategic_alpha_engine.application.contracts.state import HumanReviewQueueRecord
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 
@@ -149,6 +155,30 @@ class LocalFileArtifactLedger:
         run_dir = self.run_directory(run_id)
         self._write_jsonl(
             run_dir / "submission_ready.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
+    def write_human_review_records(
+        self,
+        run_id: str,
+        records: list[HumanReviewArtifactRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "human_review.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
+    def write_review_queue_records(
+        self,
+        run_id: str,
+        records: list[HumanReviewQueueRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "review_queue.jsonl",
             [record.model_dump(mode="json") for record in records],
         )
         return run_dir
@@ -300,6 +330,32 @@ class LocalFileArtifactLedger:
             ],
         )
 
+    def write_human_review_result(
+        self,
+        run_id: str,
+        result: HumanReviewResult,
+        *,
+        queue_records: list[HumanReviewQueueRecord],
+        agenda: ResearchAgenda | None = None,
+    ) -> Path:
+        self.write_context(
+            run_id,
+            agenda=agenda,
+            hypothesis=result.hypothesis,
+            blueprint=result.blueprint,
+        )
+        self.write_review_queue_records(
+            run_id,
+            records=queue_records,
+        )
+        return self.write_human_review_records(
+            run_id,
+            records=[
+                self._human_review_record_from_outcome(outcome)
+                for outcome in result.outcomes
+            ],
+        )
+
     def _candidate_record_from_evaluation(self, evaluation: CandidateEvaluation) -> CandidateArtifactRecord:
         return CandidateArtifactRecord(
             candidate=evaluation.candidate,
@@ -375,6 +431,15 @@ class LocalFileArtifactLedger:
             candidate=outcome.robust_promotion.candidate,
             robust_promotion=outcome.robust_promotion,
             submission_promotion=outcome.submission_promotion,
+        )
+
+    def _human_review_record_from_outcome(
+        self,
+        outcome: HumanReviewOutcome,
+    ) -> HumanReviewArtifactRecord:
+        return HumanReviewArtifactRecord(
+            submission_ready=outcome.submission_ready,
+            review_decision=outcome.review_decision,
         )
 
     def _write_json(self, path: Path, payload: dict) -> None:

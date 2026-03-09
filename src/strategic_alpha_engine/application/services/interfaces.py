@@ -6,6 +6,7 @@ from typing import Protocol
 from strategic_alpha_engine.application.contracts.artifacts import (
     CandidateArtifactRecord,
     EvaluationArtifactRecord,
+    HumanReviewArtifactRecord,
     PromotionArtifactRecord,
     SubmissionReadyArtifactRecord,
     SimulationArtifactRecord,
@@ -22,6 +23,7 @@ from strategic_alpha_engine.application.contracts.state import (
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
+    HumanReviewQueueRecord,
     RunStateRecord,
     SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
@@ -32,6 +34,7 @@ from strategic_alpha_engine.domain.expression_candidate import ExpressionCandida
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
+from strategic_alpha_engine.domain.review import HumanReviewDecision
 from strategic_alpha_engine.domain.search_policy import (
     AgendaSelection,
     AgendaPriorityRecommendation,
@@ -202,6 +205,12 @@ class ArtifactLedger(Protocol):
         records: list[SubmissionReadyArtifactRecord],
     ) -> Path: ...
 
+    def write_human_review_records(
+        self,
+        run_id: str,
+        records: list[HumanReviewArtifactRecord],
+    ) -> Path: ...
+
 
 class StateLedger(Protocol):
     def append_candidate_stage_records(self, records: list[CandidateStageRecord]) -> Path: ...
@@ -218,6 +227,10 @@ class StateLedger(Protocol):
 
     def append_submission_ready_records(self, records: list[SubmissionReadyCandidateRecord]) -> Path: ...
 
+    def append_human_review_queue_records(self, records: list[HumanReviewQueueRecord]) -> Path: ...
+
+    def append_human_review_decisions(self, records: list[HumanReviewDecision]) -> Path: ...
+
     def load_candidate_stage_records(self) -> list[CandidateStageRecord]: ...
 
     def load_run_state_records(self) -> list[RunStateRecord]: ...
@@ -231,3 +244,7 @@ class StateLedger(Protocol):
     def load_validation_backlog_entries(self) -> list[ValidationBacklogEntry]: ...
 
     def load_submission_ready_records(self) -> list[SubmissionReadyCandidateRecord]: ...
+
+    def load_human_review_queue_records(self) -> list[HumanReviewQueueRecord]: ...
+
+    def load_human_review_decisions(self) -> list[HumanReviewDecision]: ...

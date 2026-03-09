@@ -145,6 +145,19 @@ class PromotionDecisionKind(str, Enum):
     HOLD = "hold"
 
 
+class HumanReviewDecisionKind(str, Enum):
+    APPROVE = "approve"
+    HOLD = "hold"
+    REJECT = "reject"
+
+
+class HumanReviewQueueStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    HELD = "held"
+    REJECTED = "rejected"
+
+
 class CandidateLifecycleStage(str, Enum):
     DRAFT = "draft"
     CRITIQUE_PASSED = "critique_passed"
@@ -161,6 +174,7 @@ class RunKind(str, Enum):
     RESEARCH_ONCE = "research_once"
     VALIDATE = "validate"
     PROMOTE = "promote"
+    REVIEW = "review"
     STATUS = "status"
     RESEARCH_LOOP = "research_loop"
 
