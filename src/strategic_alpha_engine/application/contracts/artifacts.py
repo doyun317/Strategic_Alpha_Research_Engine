@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import Field, field_validator, model_validator
 
 from strategic_alpha_engine.application.contracts.simulation import (
@@ -11,10 +13,13 @@ from strategic_alpha_engine.domain.base import EngineModel
 from strategic_alpha_engine.domain.critique_report import CritiqueReport
 from strategic_alpha_engine.domain.evaluation import EvaluationRecord
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
+from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.promotion import PromotionDecision
+from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.review import HumanReviewDecision
-from strategic_alpha_engine.domain.common import ensure_unique_sequence
+from strategic_alpha_engine.domain.common import IDENTIFIER_PATTERN, ensure_unique_sequence
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
+from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
 from strategic_alpha_engine.domain.enums import ValidationStage
 from strategic_alpha_engine.domain.static_validation import StaticValidationReport
 from strategic_alpha_engine.domain.validation import ValidationRecord
@@ -184,4 +189,80 @@ class HumanReviewArtifactRecord(EngineModel):
             raise ValueError("review_decision.blueprint_id must match submission_ready candidate lineage")
         if self.review_decision.submission_ready_source_run_id != self.submission_ready.submission_promotion.source_run_id:
             raise ValueError("review_decision.submission_ready_source_run_id must match submission_ready promotion")
+        return self
+
+
+class SubmissionPacketValidationSummary(EngineModel):
+    validation_stage: ValidationStage
+    validation_source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    candidate_source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    requested_periods: list[str] = Field(default_factory=list, max_length=16)
+    validation_ids: list[str] = Field(default_factory=list, max_length=32)
+    passing_periods: list[str] = Field(default_factory=list, max_length=16)
+    failing_periods: list[str] = Field(default_factory=list, max_length=16)
+    grades_by_period: dict[str, str] = Field(default_factory=dict)
+    aggregate_pass_decision: bool
+    checks: list[str] = Field(default_factory=list, max_length=32)
+    reasons: list[str] = Field(default_factory=list, max_length=16)
+
+    @field_validator(
+        "requested_periods",
+        "validation_ids",
+        "passing_periods",
+        "failing_periods",
+        "checks",
+        "reasons",
+    )
+    @classmethod
+    def validate_unique_lists(cls, value: list[str], info) -> list[str]:
+        return ensure_unique_sequence(value, info.field_name)
+
+
+class SubmissionPacketArtifactRecord(EngineModel):
+    packet_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    review_source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    submission_ready_source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    generated_at: datetime
+    agenda: ResearchAgenda | None = None
+    hypothesis: HypothesisSpec
+    blueprint: SignalBlueprint
+    candidate_artifact: CandidateArtifactRecord
+    simulation_artifact: SimulationArtifactRecord
+    evaluation_artifact: EvaluationArtifactRecord
+    stage_a_promotion: PromotionArtifactRecord
+    submission_ready: SubmissionReadyArtifactRecord
+    validation_summary: SubmissionPacketValidationSummary
+    validation_records: list[ValidationRecord] = Field(default_factory=list)
+    review_decision: HumanReviewDecision
+    packet_version: str = Field(default="v1", min_length=2, max_length=16)
+
+    @field_validator("generated_at")
+    @classmethod
+    def validate_generated_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+            raise ValueError("generated_at must be timezone-aware")
+        return value
+
+    @model_validator(mode="after")
+    def validate_lineage(self) -> "SubmissionPacketArtifactRecord":
+        candidate_id = self.candidate_artifact.candidate.candidate_id
+        if self.simulation_artifact.simulation_request.candidate_id != candidate_id:
+            raise ValueError("simulation_artifact candidate lineage must match candidate_artifact")
+        if self.evaluation_artifact.evaluation.candidate_id != candidate_id:
+            raise ValueError("evaluation_artifact candidate lineage must match candidate_artifact")
+        if self.stage_a_promotion.promotion.candidate_id != candidate_id:
+            raise ValueError("stage_a_promotion candidate lineage must match candidate_artifact")
+        if self.submission_ready.candidate.candidate_id != candidate_id:
+            raise ValueError("submission_ready candidate lineage must match candidate_artifact")
+        if self.review_decision.candidate_id != candidate_id:
+            raise ValueError("review_decision candidate lineage must match candidate_artifact")
+        if self.review_decision.submission_ready_source_run_id != self.submission_ready_source_run_id:
+            raise ValueError("review_decision.submission_ready_source_run_id must match submission_ready_source_run_id")
+        validation_ids = {record.validation_id for record in self.validation_records}
+        if set(self.validation_summary.validation_ids) != validation_ids:
+            raise ValueError("validation_summary.validation_ids must match validation_records")
+        for record in self.validation_records:
+            if record.candidate_id != candidate_id:
+                raise ValueError("validation_records candidate lineage must match candidate_artifact")
         return self

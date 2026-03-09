@@ -28,6 +28,8 @@ Current status:
   - [docs/phase4_robust_validation.ko.md](./docs/phase4_robust_validation.ko.md)
 - Phase 5 scope:
   - [docs/phase5_submission_prep_layer.ko.md](./docs/phase5_submission_prep_layer.ko.md)
+- Submission packet runbook:
+  - [docs/submission_packet_runbook.ko.md](./docs/submission_packet_runbook.ko.md)
 
 ## Quickstart
 
@@ -104,6 +106,7 @@ python -m strategic_alpha_engine simulate --artifacts-dir artifacts
 python -m strategic_alpha_engine validate --artifacts-dir artifacts
 python -m strategic_alpha_engine promote --artifacts-dir artifacts
 python -m strategic_alpha_engine review --artifacts-dir artifacts --decision approve
+python -m strategic_alpha_engine packet --artifacts-dir artifacts
 
 # optionally run a single explicit validation window instead of the default
 # stage_b multi-period set: P1Y0M0D, P3Y0M0D, P5Y0M0D
@@ -111,10 +114,11 @@ python -m strategic_alpha_engine validate --artifacts-dir artifacts --period P3Y
 
 # validate writes robust_promotion.jsonl and updates candidate stages,
 # promote advances robust candidates into the submission-ready inventory and queue,
-# and review resolves pending human-review items
+# review resolves pending human-review items,
+# and packet materializes approved candidates into self-contained submission artifacts
 # status now includes validation_summary, validation_matrix,
 # robust_promotion_summary, submission_ready_inventory,
-# human_review_queue, and human_review_summary
+# human_review_queue, human_review_summary, and submission_packet_summary
 python -m strategic_alpha_engine status --artifacts-dir artifacts
 
 # optional: persist the status summary report
@@ -194,6 +198,7 @@ Current implementation includes:
 - submission-ready artifact/state ledgers with inventory summary in `status`
 - pending human review queue created from promote runs
 - `review` CLI with approve / hold / reject decisions and human review ledgers
+- `packet` CLI with self-contained submission packet artifacts for approved candidates
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
 - local agenda queue ledger and bounded `research-loop` execution mode

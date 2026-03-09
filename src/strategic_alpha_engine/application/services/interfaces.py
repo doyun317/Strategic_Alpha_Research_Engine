@@ -8,6 +8,7 @@ from strategic_alpha_engine.application.contracts.artifacts import (
     EvaluationArtifactRecord,
     HumanReviewArtifactRecord,
     PromotionArtifactRecord,
+    SubmissionPacketArtifactRecord,
     SubmissionReadyArtifactRecord,
     SimulationArtifactRecord,
     ValidationArtifactRecord,
@@ -209,6 +210,12 @@ class ArtifactLedger(Protocol):
         self,
         run_id: str,
         records: list[HumanReviewArtifactRecord],
+    ) -> Path: ...
+
+    def write_submission_packet_records(
+        self,
+        run_id: str,
+        records: list[SubmissionPacketArtifactRecord],
     ) -> Path: ...
 
 

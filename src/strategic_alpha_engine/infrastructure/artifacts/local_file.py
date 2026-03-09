@@ -8,10 +8,14 @@ from strategic_alpha_engine.application.contracts import (
     EvaluationArtifactRecord,
     HumanReviewArtifactRecord,
     PromotionArtifactRecord,
+    SubmissionPacketArtifactRecord,
     SubmissionReadyArtifactRecord,
     SimulationArtifactRecord,
     ValidationArtifactRecord,
     ValidationPromotionArtifactRecord,
+)
+from strategic_alpha_engine.application.workflows.generate_submission_packet import (
+    SubmissionPacketResult,
 )
 from strategic_alpha_engine.application.workflows.plan import PlanResult
 from strategic_alpha_engine.application.workflows.evaluate_stage_a import StageACandidateOutcome, StageAEvaluationResult
@@ -169,6 +173,25 @@ class LocalFileArtifactLedger:
             run_dir / "human_review.jsonl",
             [record.model_dump(mode="json") for record in records],
         )
+        return run_dir
+
+    def write_submission_packet_records(
+        self,
+        run_id: str,
+        records: list[SubmissionPacketArtifactRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        packets_dir = run_dir / "packets"
+        packets_dir.mkdir(parents=True, exist_ok=True)
+        self._write_jsonl(
+            run_dir / "submission_packets.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        for record in records:
+            self._write_json(
+                packets_dir / f"{record.candidate_artifact.candidate.candidate_id}.json",
+                record.model_dump(mode="json"),
+            )
         return run_dir
 
     def write_review_queue_records(
@@ -354,6 +377,22 @@ class LocalFileArtifactLedger:
                 self._human_review_record_from_outcome(outcome)
                 for outcome in result.outcomes
             ],
+        )
+
+    def write_submission_packet_result(
+        self,
+        run_id: str,
+        result: SubmissionPacketResult,
+    ) -> Path:
+        self.write_context(
+            run_id,
+            agenda=result.agenda,
+            hypothesis=result.hypothesis,
+            blueprint=result.blueprint,
+        )
+        return self.write_submission_packet_records(
+            run_id,
+            records=result.packets,
         )
 
     def _candidate_record_from_evaluation(self, evaluation: CandidateEvaluation) -> CandidateArtifactRecord:

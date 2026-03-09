@@ -16,6 +16,8 @@ from strategic_alpha_engine.application.workflows import (
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
     RobustPromotionWorkflow,
+    SubmissionPacketBundle,
+    SubmissionPacketWorkflow,
     SubmissionReadyPromotionWorkflow,
     SimulationExecutionPolicy,
     SimulationOrchestratorWorkflow,
@@ -265,3 +267,142 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
     assert human_review[0]["submission_ready"]["candidate"]["candidate_id"] == human_review[0]["review_decision"]["candidate_id"]
     assert len(review_queue) == 1
     assert review_queue[0]["status"] == "approved"
+
+
+def test_local_file_artifact_ledger_writes_submission_packet_artifacts(tmp_path):
+    plan_result = PlanWorkflow(
+        hypothesis_planner=StaticHypothesisPlanner(),
+        blueprint_builder=StaticBlueprintBuilder(),
+    ).run(build_sample_research_agenda())
+    synthesize_result = SynthesizeWorkflow(
+        candidate_synthesizer=SkeletonCandidateSynthesizer(),
+        static_validator=MetadataBackedStaticValidator(load_seed_metadata_catalog()),
+        strategic_critic=RuleBasedStrategicCritic(),
+    ).run(
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+    )
+    simulation_result = SimulationOrchestratorWorkflow(
+        brain_client=FakeBrainSimulationClient(),
+        max_polls=3,
+    ).run(
+        synthesize_result=synthesize_result,
+        policy=SimulationExecutionPolicy(),
+    )
+    stage_a_result = StageAEvaluationWorkflow(
+        evaluator=RuleBasedStageAEvaluator(),
+        promotion_decider=RuleBasedStageAPromotionDecider(),
+    ).run(
+        simulation_result,
+        source_run_id="simulate.quality_deterioration.010",
+    )
+    candidate_id = stage_a_result.promoted_candidate_ids[0]
+    ledger = LocalFileArtifactLedger(tmp_path / "artifacts")
+    validate_result = MultiPeriodValidateWorkflow(
+        validate_workflow=ValidateWorkflow(
+            validation_runner=RuleBasedValidationRunner(),
+        ),
+    ).run(
+        source_run_id="validate.quality_deterioration.010",
+        candidate_source_run_id="simulate.quality_deterioration.010",
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+        candidates=[
+            evaluation.candidate
+            for evaluation in synthesize_result.evaluations
+            if evaluation.candidate.candidate_id == candidate_id
+        ],
+        validation_stage=ValidationStage.STAGE_B,
+        periods=["P1Y0M0D", "P3Y0M0D", "P5Y0M0D"],
+    )
+    robust_result = RobustPromotionWorkflow(
+        promotion_decider=RuleBasedRobustPromotionDecider(),
+    ).run(
+        validate_result,
+        candidates=[
+            evaluation.candidate
+            for evaluation in synthesize_result.evaluations
+            if evaluation.candidate.candidate_id == candidate_id
+        ],
+    )
+    submission_ready_result = SubmissionReadyPromotionWorkflow().run(
+        source_run_id="promote.quality_deterioration.010",
+        robust_source_run_id="validate.quality_deterioration.010",
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+        robust_records=[
+            ledger._validation_promotion_record_from_outcome(
+                outcome,
+                validation_stage=robust_result.validation_stage,
+            )
+            for outcome in robust_result.outcomes
+            if outcome.promotion.to_stage == "robust_candidate"
+        ],
+        promoted_at=validate_result.period_results[0].outcomes[0].validation.validated_at,
+    )
+    submission_ready_record = ledger._submission_ready_record_from_outcome(
+        submission_ready_result.outcomes[0]
+    )
+    review_result = HumanReviewWorkflow().run(
+        source_run_id="review.quality_deterioration.010",
+        submission_ready_source_run_id="promote.quality_deterioration.010",
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+        submission_ready_records=[submission_ready_record],
+        reviewer="reviewer_01",
+        decision=HumanReviewDecisionKind.APPROVE,
+        reviewed_at=validate_result.period_results[0].outcomes[0].validation.validated_at,
+    )
+    candidate_evaluation = next(
+        evaluation
+        for evaluation in synthesize_result.evaluations
+        if evaluation.candidate.candidate_id == candidate_id
+    )
+    simulation_execution = next(
+        execution
+        for execution in simulation_result.executions
+        if execution.simulation_request.candidate_id == candidate_id
+    )
+    stage_a_outcome = next(
+        outcome
+        for outcome in stage_a_result.outcomes
+        if outcome.candidate.candidate_id == candidate_id
+    )
+    packet_result = SubmissionPacketWorkflow().run(
+        source_run_id="packet.quality_deterioration.010",
+        review_source_run_id="review.quality_deterioration.010",
+        agenda=plan_result.agenda,
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+        bundles=[
+            SubmissionPacketBundle(
+                candidate_artifact=ledger._candidate_record_from_evaluation(candidate_evaluation),
+                simulation_artifact=ledger._simulation_record_from_execution(simulation_execution),
+                evaluation_artifact=ledger._evaluation_record_from_outcome(stage_a_outcome),
+                stage_a_promotion=ledger._promotion_record_from_outcome(stage_a_outcome),
+                submission_ready=submission_ready_record,
+                validation_records=[
+                    outcome.validation
+                    for period_result in validate_result.period_results
+                    for outcome in period_result.outcomes
+                ],
+                review_decision=review_result.outcomes[0].review_decision,
+            )
+        ],
+        generated_at=validate_result.period_results[0].outcomes[0].validation.validated_at,
+    )
+
+    ledger.write_submission_packet_result(
+        "packet.quality_deterioration.010",
+        packet_result,
+    )
+
+    run_dir = tmp_path / "artifacts" / "runs" / "packet.quality_deterioration.010"
+    packet_records = _read_jsonl(run_dir / "submission_packets.jsonl")
+    packet_json = _read_json(run_dir / "packets" / f"{candidate_id}.json")
+
+    assert _read_json(run_dir / "agenda.json")["agenda_id"] == "agenda.quality_deterioration.001"
+    assert len(packet_records) == 1
+    assert packet_records[0]["candidate_artifact"]["candidate"]["candidate_id"] == candidate_id
+    assert packet_records[0]["review_decision"]["decision"] == "approve"
+    assert packet_json["packet_id"] == packet_records[0]["packet_id"]
