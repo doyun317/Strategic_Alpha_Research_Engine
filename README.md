@@ -71,6 +71,13 @@ python -m strategic_alpha_engine catalog --view fields --field-class fundamental
 python -m strategic_alpha_engine catalog --view operators
 ```
 
+Inspect prompt assets and golden samples:
+
+```bash
+python -m strategic_alpha_engine prompt --role planner
+python -m strategic_alpha_engine prompt --role critic --sample-id critic.quality_deterioration.001
+```
+
 ## Schema Commands
 
 Print JSON schema:
@@ -109,6 +116,7 @@ src/strategic_alpha_engine/
 Current implementation includes:
 - domain schemas for agenda, hypothesis, blueprint, candidate, critique
 - metadata-backed static validator before critique
+- prompt assets and golden samples for planner / blueprint / critic roles
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic

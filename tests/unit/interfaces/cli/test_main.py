@@ -59,3 +59,23 @@ def test_example_command_prints_static_validation_payload(capsys):
     assert exit_code == 0
     assert payload["passes"] is True
     assert payload["validator_name"] == "metadata_backed_static_validator"
+
+
+def test_prompt_command_prints_planner_asset(capsys):
+    exit_code = main(["prompt", "--role", "planner"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["prompt_id"] == "planner.default.v1"
+    assert payload["role"] == "planner"
+
+
+def test_prompt_command_prints_requested_golden_sample(capsys):
+    exit_code = main(["prompt", "--role", "critic", "--sample-id", "critic.quality_deterioration.001"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["sample_id"] == "critic.quality_deterioration.001"
+    assert payload["role"] == "critic"
