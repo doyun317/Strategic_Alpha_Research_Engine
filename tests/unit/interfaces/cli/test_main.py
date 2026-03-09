@@ -8,6 +8,7 @@ from strategic_alpha_engine.domain.examples import (
     build_sample_signal_blueprint,
 )
 from strategic_alpha_engine.interfaces.cli.main import main
+from strategic_alpha_engine.domain.enums import SimulationStatus
 
 
 def test_config_command_prints_runtime_settings(tmp_path, capsys):
@@ -32,6 +33,31 @@ def test_config_command_prints_runtime_settings(tmp_path, capsys):
     assert exit_code == 0
     assert payload["region"] == "USA"
     assert payload["loaded_env_files"] == ["default.env"]
+
+
+def test_config_command_redacts_brain_password(tmp_path, capsys):
+    (tmp_path / "default.env").write_text("SAE_ENV=development\n", encoding="utf-8")
+    (tmp_path / "brain.env").write_text(
+        "\n".join(
+            [
+                "SAE_BRAIN_BASE_URL=https://api.worldquantbrain.com",
+                "SAE_BRAIN_USERNAME=tester@example.com",
+                "SAE_BRAIN_PASSWORD=super-secret",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(["config", "--settings-dir", str(tmp_path), "--require-brain"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["brain"]["base_url"] == "https://api.worldquantbrain.com"
+    assert payload["brain"]["username"] == "tester@example.com"
+    assert payload["brain"]["password_configured"] is True
+    assert "password" not in payload["brain"]
 
 
 def test_config_command_reports_missing_required_brain_settings(tmp_path, capsys):
@@ -225,6 +251,109 @@ def test_simulate_command_persists_artifacts_and_state(tmp_path, capsys):
     assert (state_dir / "run_states.jsonl").exists()
     assert (state_dir / "family_stats.json").exists()
     assert (state_dir / "family_learner_summaries.json").exists()
+
+
+def test_simulate_command_accepts_worldquant_provider_with_stubbed_client(tmp_path, capsys, monkeypatch):
+    from datetime import datetime, timezone
+
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "default.env").write_text(
+        "\n".join(
+            [
+                "SAE_ENV=test",
+                "SAE_REGION=USA",
+                "SAE_UNIVERSE=TOP3000",
+                "SAE_DEFAULT_TEST_PERIOD=P2Y0M0D",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (settings_dir / "brain.env").write_text(
+        "\n".join(
+            [
+                "SAE_BRAIN_BASE_URL=https://api.worldquantbrain.com",
+                "SAE_BRAIN_USERNAME=tester@example.com",
+                "SAE_BRAIN_PASSWORD=secret-pass",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+
+    class StubWorldQuantBrainSimulationClient:
+        def __init__(self, settings):
+            self.settings = settings
+            self._submission = None
+
+        def submit(self, request):
+            from strategic_alpha_engine.application.contracts import BrainSimulationSubmission
+
+            self._submission = BrainSimulationSubmission(
+                simulation_request_id=request.simulation_request_id,
+                provider_run_id="https://api.worldquantbrain.com/simulations/progress/test-001",
+                status=SimulationStatus.SUBMITTED,
+                accepted_at=requested_at,
+                provider_message="submitted to stub worldquant queue",
+            )
+            self._request = request
+            return self._submission
+
+        def poll(self, provider_run_id):
+            from strategic_alpha_engine.application.contracts import BrainSimulationPollResult
+
+            return BrainSimulationPollResult(
+                provider_run_id=provider_run_id,
+                status=SimulationStatus.SUCCEEDED,
+                observed_at=requested_at,
+                provider_message="stub complete",
+            )
+
+        def fetch_result(self, provider_run_id):
+            from strategic_alpha_engine.application.contracts import BrainSimulationResult
+
+            return BrainSimulationResult(
+                simulation_request_id=self._request.simulation_request_id,
+                candidate_id=self._request.candidate_id,
+                provider_run_id=provider_run_id,
+                status=SimulationStatus.SUCCEEDED,
+                completed_at=requested_at,
+                sharpe=1.2,
+                fitness=0.9,
+                turnover=0.2,
+                returns=0.05,
+                drawdown=0.03,
+                checks=["stubbed_worldquant"],
+                grade="A",
+                raw_response={"provider": "stub_worldquant"},
+            )
+
+    requested_at = datetime(2026, 3, 9, 9, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(
+        "strategic_alpha_engine.interfaces.cli.main.WorldQuantBrainSimulationClient",
+        StubWorldQuantBrainSimulationClient,
+    )
+
+    exit_code = main(
+        [
+            "simulate",
+            "--settings-dir",
+            str(settings_dir),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--brain-provider",
+            "worldquant",
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["brain_provider"] == "worldquant"
+    assert payload["simulation_status_counts"]["succeeded"] == len(payload["simulated_candidate_ids"])
 
 
 def test_status_command_summarizes_local_ledgers(tmp_path, capsys):

@@ -35,6 +35,8 @@ def test_load_runtime_settings_merges_env_files(tmp_path):
         "\n".join(
             [
                 "SAE_BRAIN_BASE_URL=https://brain.example.com/api",
+                "SAE_BRAIN_USERNAME=tester@example.com",
+                "SAE_BRAIN_PASSWORD=secret-pass",
                 "SAE_BRAIN_SUBMIT_TIMEOUT_SECONDS=60",
                 "SAE_BRAIN_POLL_INTERVAL_SECONDS=20",
                 "SAE_BRAIN_MAX_POLLS=40",
@@ -53,6 +55,8 @@ def test_load_runtime_settings_merges_env_files(tmp_path):
     assert settings.llm.model == "test-model"
     assert settings.llm.timeout_seconds == 45.0
     assert settings.brain is not None
+    assert settings.brain.username == "tester@example.com"
+    assert settings.brain.password == "secret-pass"
     assert settings.brain.max_polls == 40
     assert settings.loaded_env_files == ["default.env", "local.env", "llm.env", "brain.env"]
 
@@ -93,4 +97,21 @@ def test_partial_llm_configuration_is_rejected(tmp_path):
     (tmp_path / "llm.env").write_text("SAE_LLM_BASE_URL=http://127.0.0.1:8000/v1\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="LLM settings are partially configured"):
+        load_runtime_settings(settings_dir=tmp_path, environ={})
+
+
+def test_partial_brain_credentials_are_rejected(tmp_path):
+    (tmp_path / "default.env").write_text("SAE_ENV=development\n", encoding="utf-8")
+    (tmp_path / "brain.env").write_text(
+        "\n".join(
+            [
+                "SAE_BRAIN_BASE_URL=https://api.worldquantbrain.com",
+                "SAE_BRAIN_USERNAME=tester@example.com",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Brain credentials are partially configured"):
         load_runtime_settings(settings_dir=tmp_path, environ={})

@@ -86,7 +86,10 @@ from strategic_alpha_engine.domain.enums import (
 )
 from strategic_alpha_engine.domain.review import HumanReviewDecision
 from strategic_alpha_engine.infrastructure.artifacts import LocalFileArtifactLedger
-from strategic_alpha_engine.infrastructure.brain import FakeBrainSimulationClient
+from strategic_alpha_engine.infrastructure.brain import (
+    FakeBrainSimulationClient,
+    WorldQuantBrainSimulationClient,
+)
 from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
 from strategic_alpha_engine.infrastructure.state import LocalFileStateLedger
 from strategic_alpha_engine.prompts import load_prompt_asset, load_prompt_golden_sample
@@ -113,6 +116,39 @@ def _read_jsonl_file(path: Path) -> list[dict]:
     if not content:
         return []
     return [json.loads(line) for line in content.splitlines()]
+
+
+def _build_config_payload(settings: RuntimeSettings) -> dict:
+    payload = settings.model_dump(mode="json")
+    if settings.brain is not None:
+        payload["brain"] = {
+            "base_url": settings.brain.base_url,
+            "username": settings.brain.username,
+            "password_configured": bool(settings.brain.password),
+            "submit_timeout_seconds": settings.brain.submit_timeout_seconds,
+            "poll_interval_seconds": settings.brain.poll_interval_seconds,
+            "max_polls": settings.brain.max_polls,
+        }
+    return payload
+
+
+def _build_brain_client(
+    *,
+    settings: RuntimeSettings,
+    brain_provider: str,
+    fake_terminal_status: str,
+    started_at: datetime,
+):
+    if brain_provider == "fake":
+        return FakeBrainSimulationClient(
+            terminal_status=SimulationStatus(fake_terminal_status),
+            base_time=started_at - timedelta(minutes=5),
+        )
+
+    if settings.brain is None:
+        raise ValueError("Brain settings are required when --brain-provider=worldquant")
+
+    return WorldQuantBrainSimulationClient(settings.brain)
 
 
 def _load_agenda(path: str | None) -> ResearchAgenda:
@@ -1860,6 +1896,7 @@ def _execute_local_research_run(
     agenda: ResearchAgenda | None,
     hypothesis: HypothesisSpec,
     blueprint: SignalBlueprint,
+    brain_provider: str,
     fake_terminal_status: str,
     max_polls: int | None,
 ) -> dict:
@@ -1880,9 +1917,11 @@ def _execute_local_research_run(
         policy = _build_simulation_policy(settings, hypothesis)
         resolved_max_polls = max_polls or (settings.brain.max_polls if settings.brain else 3)
         simulation_result = SimulationOrchestratorWorkflow(
-            brain_client=FakeBrainSimulationClient(
-                terminal_status=SimulationStatus(fake_terminal_status),
-                base_time=started_at - timedelta(minutes=5),
+            brain_client=_build_brain_client(
+                settings=settings,
+                brain_provider=brain_provider,
+                fake_terminal_status=fake_terminal_status,
+                started_at=started_at,
             ),
             max_polls=resolved_max_polls,
         ).run(
@@ -1956,6 +1995,7 @@ def _execute_local_research_run(
             "agenda_id": agenda.agenda_id if agenda is not None else hypothesis.agenda_id,
             "hypothesis_id": hypothesis.hypothesis_id,
             "blueprint_id": blueprint.blueprint_id,
+            "brain_provider": brain_provider,
             "policy": policy.model_dump(mode="json"),
             "accepted_candidate_ids": synthesize_result.accepted_candidate_ids,
             "rejected_candidate_ids": synthesize_result.rejected_candidate_ids,
@@ -2039,6 +2079,11 @@ def build_parser() -> argparse.ArgumentParser:
     simulate_parser.add_argument("--artifacts-dir", default="artifacts")
     simulate_parser.add_argument("--run-id", default=None)
     simulate_parser.add_argument(
+        "--brain-provider",
+        choices=["fake", "worldquant"],
+        default="fake",
+    )
+    simulate_parser.add_argument(
         "--fake-terminal-status",
         choices=[
             SimulationStatus.SUCCEEDED.value,
@@ -2058,6 +2103,11 @@ def build_parser() -> argparse.ArgumentParser:
     research_loop_parser.add_argument("--artifacts-dir", default="artifacts")
     research_loop_parser.add_argument("--agenda-in", action="append", default=None)
     research_loop_parser.add_argument("--iterations", type=int, default=1)
+    research_loop_parser.add_argument(
+        "--brain-provider",
+        choices=["fake", "worldquant"],
+        default="fake",
+    )
     research_loop_parser.add_argument(
         "--fake-terminal-status",
         choices=[
@@ -2241,6 +2291,7 @@ def main(argv: list[str] | None = None) -> int:
             agenda=agenda,
             hypothesis=hypothesis,
             blueprint=blueprint,
+            brain_provider=args.brain_provider,
             fake_terminal_status=args.fake_terminal_status,
             max_polls=args.max_polls,
         )
@@ -2295,6 +2346,7 @@ def main(argv: list[str] | None = None) -> int:
                 agenda=plan_result.agenda,
                 hypothesis=plan_result.hypothesis,
                 blueprint=plan_result.blueprint,
+                brain_provider=args.brain_provider,
                 fake_terminal_status=args.fake_terminal_status,
                 max_polls=args.max_polls,
             )
@@ -2901,7 +2953,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         except ValueError as exc:
             parser.exit(status=2, message=f"{exc}\n")
-        payload = settings.model_dump(mode="json")
+        payload = _build_config_payload(settings)
         _write_output(payload, args.out)
         return 0
 

@@ -32,6 +32,8 @@ class LLMSettings(EngineModel):
 
 class BrainSettings(EngineModel):
     base_url: str = Field(min_length=8, max_length=500)
+    username: str | None = Field(default=None, min_length=3, max_length=320)
+    password: str | None = Field(default=None, min_length=3, max_length=200)
     submit_timeout_seconds: float = Field(default=30.0, gt=0.0, le=600.0)
     poll_interval_seconds: float = Field(default=15.0, gt=0.0, le=600.0)
     max_polls: int = Field(default=120, ge=1, le=10000)
@@ -55,6 +57,8 @@ _DEFAULT_ENV_FILES = ("default.env", "local.env", "llm.env", "brain.env")
 _LLM_KEYS = ("SAE_LLM_BASE_URL", "SAE_LLM_MODEL", "SAE_LLM_TIMEOUT_SECONDS")
 _BRAIN_KEYS = (
     "SAE_BRAIN_BASE_URL",
+    "SAE_BRAIN_USERNAME",
+    "SAE_BRAIN_PASSWORD",
     "SAE_BRAIN_SUBMIT_TIMEOUT_SECONDS",
     "SAE_BRAIN_POLL_INTERVAL_SECONDS",
     "SAE_BRAIN_MAX_POLLS",
@@ -135,9 +139,17 @@ def _build_brain_settings(values: Mapping[str, str]) -> BrainSettings | None:
 
     if not values.get("SAE_BRAIN_BASE_URL"):
         raise ValueError("Brain settings are partially configured; missing: SAE_BRAIN_BASE_URL")
+    username = values.get("SAE_BRAIN_USERNAME")
+    password = values.get("SAE_BRAIN_PASSWORD")
+    if bool(username) != bool(password):
+        raise ValueError(
+            "Brain credentials are partially configured; both SAE_BRAIN_USERNAME and SAE_BRAIN_PASSWORD are required"
+        )
 
     return BrainSettings(
         base_url=values["SAE_BRAIN_BASE_URL"],
+        username=username,
+        password=password,
         submit_timeout_seconds=values.get("SAE_BRAIN_SUBMIT_TIMEOUT_SECONDS", 30.0),
         poll_interval_seconds=values.get("SAE_BRAIN_POLL_INTERVAL_SECONDS", 15.0),
         max_polls=values.get("SAE_BRAIN_MAX_POLLS", 120),
