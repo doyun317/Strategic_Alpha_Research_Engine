@@ -4,6 +4,7 @@ from strategic_alpha_engine.application.contracts.artifacts import (
     PromotionArtifactRecord,
     SimulationArtifactRecord,
     ValidationArtifactRecord,
+    ValidationPromotionArtifactRecord,
 )
 from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationPollResult,
@@ -49,5 +50,6 @@ __all__ = [
     "StrategicCriticPromptInput",
     "StrategicCriticPromptOutput",
     "ValidationArtifactRecord",
+    "ValidationPromotionArtifactRecord",
     "ValidationBacklogEntry",
 ]

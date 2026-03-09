@@ -9,9 +9,14 @@ from strategic_alpha_engine.application.contracts import (
     PromotionArtifactRecord,
     SimulationArtifactRecord,
     ValidationArtifactRecord,
+    ValidationPromotionArtifactRecord,
 )
 from strategic_alpha_engine.application.workflows.plan import PlanResult
 from strategic_alpha_engine.application.workflows.evaluate_stage_a import StageACandidateOutcome, StageAEvaluationResult
+from strategic_alpha_engine.application.workflows.promote_robust_candidates import (
+    RobustPromotionOutcome,
+    RobustPromotionResult,
+)
 from strategic_alpha_engine.application.workflows.simulate import (
     SimulationCandidateExecution,
     SimulationOrchestratorResult,
@@ -115,6 +120,18 @@ class LocalFileArtifactLedger:
         run_dir = self.run_directory(run_id)
         self._write_jsonl(
             run_dir / "validations.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
+    def write_robust_promotion_records(
+        self,
+        run_id: str,
+        records: list[ValidationPromotionArtifactRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "robust_promotion.jsonl",
             [record.model_dump(mode="json") for record in records],
         )
         return run_dir
@@ -229,6 +246,22 @@ class LocalFileArtifactLedger:
             records=records,
         )
 
+    def write_robust_promotion_result(
+        self,
+        run_id: str,
+        result: RobustPromotionResult,
+    ) -> Path:
+        return self.write_robust_promotion_records(
+            run_id,
+            records=[
+                self._validation_promotion_record_from_outcome(
+                    outcome,
+                    validation_stage=result.validation_stage,
+                )
+                for outcome in result.outcomes
+            ],
+        )
+
     def _candidate_record_from_evaluation(self, evaluation: CandidateEvaluation) -> CandidateArtifactRecord:
         return CandidateArtifactRecord(
             candidate=evaluation.candidate,
@@ -274,6 +307,26 @@ class LocalFileArtifactLedger:
         return ValidationArtifactRecord(
             candidate=outcome.candidate,
             validation=outcome.validation,
+        )
+
+    def _validation_promotion_record_from_outcome(
+        self,
+        outcome: RobustPromotionOutcome,
+        *,
+        validation_stage: str,
+    ) -> ValidationPromotionArtifactRecord:
+        return ValidationPromotionArtifactRecord(
+            candidate=outcome.candidate,
+            validation_stage=validation_stage,
+            requested_periods=outcome.requested_periods,
+            validation_ids=[
+                validation.validation_id
+                for validation in outcome.validation_records
+            ],
+            passing_periods=outcome.passing_periods,
+            failing_periods=outcome.failing_periods,
+            aggregate_pass_decision=outcome.aggregate_pass_decision,
+            promotion=outcome.promotion,
         )
 
     def _write_json(self, path: Path, payload: dict) -> None:

@@ -12,6 +12,7 @@ from strategic_alpha_engine.application.contracts import (
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
+    ValidationPromotionArtifactRecord,
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.application.services import (
@@ -22,17 +23,20 @@ from strategic_alpha_engine.application.services import (
     LocalArtifactFamilyAnalyticsBuilder,
     MetadataBackedStaticValidator,
     RuleBasedStrategicCritic,
+    RuleBasedRobustPromotionDecider,
     RuleBasedStageAEvaluator,
     RuleBasedStageAPromotionDecider,
     RuleBasedValidationRunner,
     SkeletonCandidateSynthesizer,
     StaticBlueprintBuilder,
     StaticHypothesisPlanner,
+    candidate_signature,
 )
 from strategic_alpha_engine.application.workflows import (
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
     ResearchOnceWorkflow,
+    RobustPromotionWorkflow,
     SimulationExecutionPolicy,
     SimulationOrchestratorWorkflow,
     StageAEvaluationWorkflow,
@@ -168,6 +172,12 @@ def _build_multi_period_validate_workflow(
     return MultiPeriodValidateWorkflow(
         validate_workflow=_build_validate_workflow(base_time=base_time),
         minimum_passing_periods=minimum_passing_periods,
+    )
+
+
+def _build_robust_promotion_workflow() -> RobustPromotionWorkflow:
+    return RobustPromotionWorkflow(
+        promotion_decider=RuleBasedRobustPromotionDecider(),
     )
 
 
@@ -397,10 +407,12 @@ def _load_validate_inputs(
     if not candidates:
         raise ValueError("validation source run must include candidate artifacts")
 
+    latest_stage_records = _latest_candidate_stage_records(state_ledger.load_candidate_stage_records())
+    source_run_candidate_ids = {candidate.candidate_id for candidate in candidates}
     eligible_candidate_ids = {
-        record.candidate_id
-        for record in state_ledger.load_candidate_stage_records()
-        if record.source_run_id == source_candidate_run_id and record.stage == CandidateLifecycleStage.SIM_PASSED
+        candidate_id
+        for candidate_id, record in latest_stage_records.items()
+        if candidate_id in source_run_candidate_ids and record.stage == CandidateLifecycleStage.SIM_PASSED
     }
     requested_candidate_ids = set(candidate_ids or [])
     if requested_candidate_ids:
@@ -509,6 +521,73 @@ def _load_validation_records(
     return validation_records
 
 
+def _load_candidate_catalog(root_dir: str | Path) -> dict[str, ExpressionCandidate]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    candidate_catalog: dict[str, ExpressionCandidate] = {}
+    candidate_fields = set(ExpressionCandidate.model_fields)
+    for candidates_path in sorted((artifacts_root / "runs").glob("*/candidates.jsonl")):
+        for payload in _read_jsonl_file(candidates_path):
+            candidate = ExpressionCandidate(
+                **{key: value for key, value in payload.items() if key in candidate_fields}
+            )
+            candidate_catalog[candidate.candidate_id] = candidate
+    return candidate_catalog
+
+
+def _resolve_existing_robust_signature_counts(
+    root_dir: str | Path,
+    candidate_stage_records: list[CandidateStageRecord],
+) -> dict[str, int]:
+    latest_stage_records = _latest_candidate_stage_records(candidate_stage_records)
+    robust_candidate_ids = {
+        candidate_id
+        for candidate_id, record in latest_stage_records.items()
+        if record.stage in {
+            CandidateLifecycleStage.ROBUST_CANDIDATE,
+            CandidateLifecycleStage.SUBMISSION_READY,
+        }
+    }
+    if not robust_candidate_ids:
+        return {}
+
+    candidate_catalog = _load_candidate_catalog(root_dir)
+    signature_counts: Counter[str] = Counter()
+    for candidate_id in sorted(robust_candidate_ids):
+        candidate = candidate_catalog.get(candidate_id)
+        if candidate is None:
+            continue
+        signature_counts[candidate_signature(candidate)] += 1
+    return dict(signature_counts)
+
+
+def _load_robust_promotion_records(
+    root_dir: str | Path,
+    run_state_records: list[RunStateRecord],
+) -> list[ValidationPromotionArtifactRecord]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    promotion_records: list[ValidationPromotionArtifactRecord] = []
+    candidate_fields = set(ExpressionCandidate.model_fields)
+    for record in _latest_run_state_records(run_state_records).values():
+        if record.run_kind != RunKind.VALIDATE:
+            continue
+        promotions_path = artifacts_root / "runs" / record.run_id / "robust_promotion.jsonl"
+        for payload in _read_jsonl_file(promotions_path):
+            candidate_payload = payload.get("candidate", {})
+            promotion_records.append(
+                ValidationPromotionArtifactRecord(
+                    **{
+                        **payload,
+                        "candidate": {
+                            key: value
+                            for key, value in candidate_payload.items()
+                            if key in candidate_fields
+                        },
+                    }
+                )
+            )
+    return promotion_records
+
+
 def _build_validation_summary(validation_records: list[ValidationRecord]) -> dict:
     if not validation_records:
         return {
@@ -577,6 +656,62 @@ def _build_validation_matrix_summary(validation_records: list[ValidationRecord])
     return matrix.model_dump(mode="json")
 
 
+def _build_robust_promotion_summary(
+    promotion_records: list[ValidationPromotionArtifactRecord],
+) -> dict:
+    if not promotion_records:
+        return {
+            "latest_run_id": None,
+            "total_decisions": 0,
+            "counts_by_decision": {},
+            "counts_by_target_stage": {},
+            "promoted_candidate_ids": [],
+            "held_candidate_ids": [],
+            "rejected_candidate_ids": [],
+        }
+
+    latest_record = max(
+        promotion_records,
+        key=lambda record: record.promotion.decided_at,
+    )
+    latest_run_id = latest_record.promotion.source_run_id
+    latest_run_records = [
+        record
+        for record in promotion_records
+        if record.promotion.source_run_id == latest_run_id
+    ]
+    decision_counts: Counter[str] = Counter(
+        record.promotion.decision
+        for record in latest_run_records
+    )
+    target_stage_counts: Counter[str] = Counter(
+        record.promotion.to_stage
+        for record in latest_run_records
+    )
+
+    return {
+        "latest_run_id": latest_run_id,
+        "total_decisions": len(latest_run_records),
+        "counts_by_decision": dict(sorted(decision_counts.items())),
+        "counts_by_target_stage": dict(sorted(target_stage_counts.items())),
+        "promoted_candidate_ids": [
+            record.candidate.candidate_id
+            for record in latest_run_records
+            if record.promotion.to_stage == CandidateLifecycleStage.ROBUST_CANDIDATE
+        ],
+        "held_candidate_ids": [
+            record.candidate.candidate_id
+            for record in latest_run_records
+            if record.promotion.to_stage == CandidateLifecycleStage.SIM_PASSED
+        ],
+        "rejected_candidate_ids": [
+            record.candidate.candidate_id
+            for record in latest_run_records
+            if record.promotion.to_stage == CandidateLifecycleStage.REJECTED
+        ],
+    }
+
+
 def _build_simulation_status_counts(simulation_result) -> dict[str, int]:
     counts = {
         status.value: 0
@@ -606,6 +741,34 @@ def _resolve_family_analytics(
     if not learner_summaries:
         learner_summaries = analytics_bundle.learner_summaries
     return family_stats, learner_summaries
+
+
+def _build_robust_candidate_stage_records(
+    *,
+    run_id: str,
+    hypothesis: HypothesisSpec,
+    blueprint: SignalBlueprint,
+    promotion_result,
+) -> list[CandidateStageRecord]:
+    records: list[CandidateStageRecord] = []
+    for outcome in promotion_result.outcomes:
+        note = f"robust promotion decision: {outcome.promotion.decision}"
+        if outcome.promotion.reasons:
+            note = f"{note}; {'; '.join(outcome.promotion.reasons[:2])}"
+        records.append(
+            CandidateStageRecord(
+                stage_record_id=f"stage.{run_id}.{outcome.candidate.candidate_id}.{outcome.promotion.to_stage}",
+                candidate_id=outcome.candidate.candidate_id,
+                hypothesis_id=hypothesis.hypothesis_id,
+                blueprint_id=blueprint.blueprint_id,
+                family=hypothesis.family,
+                stage=outcome.promotion.to_stage,
+                source_run_id=run_id,
+                recorded_at=outcome.promotion.decided_at,
+                notes=note[:240],
+            )
+        )
+    return records
 
 
 def _build_agenda_queue_records(
@@ -705,6 +868,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
     validation_backlog_entries = state_ledger.load_validation_backlog_entries()
     latest_validation_backlog_entries = _latest_validation_backlog_entries(validation_backlog_entries)
     validation_records = _load_validation_records(artifacts_root, run_state_records)
+    robust_promotion_records = _load_robust_promotion_records(artifacts_root, run_state_records)
 
     if not family_stats or not learner_summaries:
         analytics_bundle = _build_family_analytics_bundle(artifacts_root, candidate_stage_records)
@@ -818,6 +982,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         },
         "validation_summary": _build_validation_summary(validation_records),
         "validation_matrix": _build_validation_matrix_summary(validation_records),
+        "robust_promotion_summary": _build_robust_promotion_summary(robust_promotion_records),
         "agenda_queue": _build_agenda_queue_summary(agenda_queue_records),
         "candidate_stage_counts": _build_stage_counts(candidate_stage_records),
         "recent_candidate_flow_24h": {
@@ -1343,6 +1508,34 @@ def main(argv: list[str] | None = None) -> int:
                 result,
                 agenda=agenda,
             )
+            promotion_result = _build_robust_promotion_workflow().run(
+                result,
+                candidates=candidates,
+                existing_robust_signature_counts=_resolve_existing_robust_signature_counts(
+                    args.artifacts_dir,
+                    state_ledger.load_candidate_stage_records(),
+                ),
+            )
+            artifact_ledger.write_robust_promotion_result(
+                run_id,
+                promotion_result,
+            )
+            state_ledger.append_candidate_stage_records(
+                _build_robust_candidate_stage_records(
+                    run_id=run_id,
+                    hypothesis=hypothesis,
+                    blueprint=blueprint,
+                    promotion_result=promotion_result,
+                )
+            )
+            analytics_bundle = _build_family_analytics_bundle(
+                args.artifacts_dir,
+                state_ledger.load_candidate_stage_records(),
+            )
+            family_stats = analytics_bundle.family_stats
+            learner_summaries = analytics_bundle.learner_summaries
+            state_ledger.write_family_stats(family_stats)
+            state_ledger.write_family_learner_summaries(learner_summaries)
             completed_at = _utc_now()
             completed_entries: list[ValidationBacklogEntry] = []
             for period in periods:
@@ -1380,6 +1573,9 @@ def main(argv: list[str] | None = None) -> int:
                 "validated_candidate_ids": result.validated_candidate_ids,
                 "passed_candidate_ids": result.passed_candidate_ids,
                 "failed_candidate_ids": result.failed_candidate_ids,
+                "robust_promoted_candidate_ids": promotion_result.promoted_candidate_ids,
+                "robust_held_candidate_ids": promotion_result.held_candidate_ids,
+                "robust_rejected_candidate_ids": promotion_result.rejected_candidate_ids,
                 "artifact_run_dir": str(artifact_run_dir),
                 "state_dir": str(state_ledger.state_directory()),
                 "validation_summary": _build_validation_summary(
@@ -1390,6 +1586,24 @@ def main(argv: list[str] | None = None) -> int:
                     ]
                 ),
                 "validation_matrix": result.validation_matrix.model_dump(mode="json"),
+                "robust_promotion_summary": _build_robust_promotion_summary(
+                    [
+                        ValidationPromotionArtifactRecord(
+                            candidate=outcome.candidate,
+                            validation_stage=promotion_result.validation_stage,
+                            requested_periods=outcome.requested_periods,
+                            validation_ids=[
+                                validation.validation_id
+                                for validation in outcome.validation_records
+                            ],
+                            passing_periods=outcome.passing_periods,
+                            failing_periods=outcome.failing_periods,
+                            aggregate_pass_decision=outcome.aggregate_pass_decision,
+                            promotion=outcome.promotion,
+                        )
+                        for outcome in promotion_result.outcomes
+                    ]
+                ),
             }
             _write_output(payload, args.out)
             return 0

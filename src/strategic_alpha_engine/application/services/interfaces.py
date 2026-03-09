@@ -9,6 +9,7 @@ from strategic_alpha_engine.application.contracts.artifacts import (
     PromotionArtifactRecord,
     SimulationArtifactRecord,
     ValidationArtifactRecord,
+    ValidationPromotionArtifactRecord,
 )
 from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationPollResult,
@@ -185,6 +186,12 @@ class ArtifactLedger(Protocol):
         self,
         run_id: str,
         payload: dict,
+    ) -> Path: ...
+
+    def write_robust_promotion_records(
+        self,
+        run_id: str,
+        records: list[ValidationPromotionArtifactRecord],
     ) -> Path: ...
 
 

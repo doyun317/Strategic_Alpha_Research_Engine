@@ -2,6 +2,7 @@ import json
 
 from strategic_alpha_engine.application.services import (
     MetadataBackedStaticValidator,
+    RuleBasedRobustPromotionDecider,
     RuleBasedStrategicCritic,
     RuleBasedStageAEvaluator,
     RuleBasedStageAPromotionDecider,
@@ -13,6 +14,7 @@ from strategic_alpha_engine.application.services import (
 from strategic_alpha_engine.application.workflows import (
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
+    RobustPromotionWorkflow,
     SimulationExecutionPolicy,
     SimulationOrchestratorWorkflow,
     StageAEvaluationWorkflow,
@@ -160,19 +162,32 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
         validation_stage=ValidationStage.STAGE_B,
         periods=["P1Y0M0D", "P3Y0M0D", "P5Y0M0D"],
     )
+    promotion_result = RobustPromotionWorkflow(
+        promotion_decider=RuleBasedRobustPromotionDecider(),
+    ).run(
+        validate_result,
+        candidates=[evaluation.candidate for evaluation in synthesize_result.evaluations[:2]],
+    )
 
     ledger.write_validation_result(
         run_id,
         validate_result,
         agenda=plan_result.agenda,
     )
+    ledger.write_robust_promotion_result(
+        run_id,
+        promotion_result,
+    )
 
     run_dir = tmp_path / "artifacts" / "runs" / run_id
     validations = _read_jsonl(run_dir / "validations.jsonl")
     matrix = _read_json(run_dir / "validation_matrix.json")
+    robust_promotions = _read_jsonl(run_dir / "robust_promotion.jsonl")
 
     assert _read_json(run_dir / "agenda.json")["agenda_id"] == "agenda.quality_deterioration.001"
     assert len(validations) == 6
     assert validations[0]["candidate"]["candidate_id"] == validations[0]["validation"]["candidate_id"]
     assert matrix["required_passing_periods"] == 2
     assert matrix["total_candidates"] == 2
+    assert len(robust_promotions) == 2
+    assert robust_promotions[0]["candidate"]["candidate_id"] == robust_promotions[0]["promotion"]["candidate_id"]
