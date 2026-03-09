@@ -123,7 +123,7 @@ git checkout -b phase2/2-3-static-validator
 | 4-1 | `phase4/4-1-validation-domain-and-cli` | 10.7, 14.6 | `ValidationRecord` 도메인과 `validate` CLI 추가 | validation input/output 구조 테스트 통과 | `completed` |
 | 4-2 | `phase4/4-2-multi-period-validation-runner` | 11.9, Phase 4 | Stage B/C 다중 기간 검증 runner 추가 | `P1Y0M0D`, `P3Y0M0D`, `P5Y0M0D` validation matrix와 aggregate rule 확인 | `completed` |
 | 4-3 | `phase4/4-3-robust-candidate-promotion` | 11.10, Phase 4 | robust candidate 승격 규칙 추가 | validation matrix와 diversity guard를 반영한 `sim_passed -> robust_candidate` 전이 확인 | `completed` |
-| 5-1 | `phase5/5-1-submission-ready-ledger` | 10.8, Phase 5 | submission-ready 상태 기록 구조 추가 | submission-ready 후보 ledger 생성 확인 | `planned` |
+| 5-1 | `phase5/5-1-submission-ready-ledger` | 10.8, Phase 5 | submission-ready 상태 기록 구조 추가 | submission-ready 후보 ledger 생성 확인 | `completed` |
 | 5-2 | `phase5/5-2-human-review-queue` | 11.10, Phase 5 | human review queue와 review decision 기록 추가 | review queue entry 생성/해제 테스트 통과 | `planned` |
 | 5-3 | `phase5/5-3-submission-packet-generation` | Phase 5 | 제출용 패킷 생성 | candidate lineage + validation summary packet 생성 가능 | `planned` |
 
@@ -192,32 +192,32 @@ git checkout -b phase2/2-3-static-validator
 - 다음 브랜치가 현재 브랜치 결과물을 안정적으로 재사용할 수 있는가
 - 로컬 파일 저장 포맷이 사람이 직접 읽을 수 있는가
 
-## 9. 현재 작업 범위: 5-1
+## 9. 현재 작업 범위: 5-2
 
 다음 브랜치에서 처리할 내용:
 
-- submission-ready 상태 기록 구조 추가
-- `robust_candidate -> submission_ready` 상태 전이와 inventory summary 추가
-- final stage counts와 latest promotion record를 status에 반영
-- submission-ready 후보 ledger와 관련 단위 테스트 추가
-- 관련 단위 테스트와 CLI smoke test 추가
+- human review queue entry와 review 상태 추가
+- `submission_ready -> review_approved / hold / rejected` 결정 기록 구조 추가
+- queue 상태와 review decision summary를 status에 반영
+- review queue ledger와 관련 단위 테스트 추가
+- review CLI smoke test 추가
 
 이번 브랜치에서 일부러 하지 않는 내용:
 
-- human review queue
 - submission packet generation
 - UI review workflow
 - 외부 제출 자동화
+- 실제 외부 제출 연동
 
-## 10. `5-1` 권장 커밋 단위
+## 10. `5-2` 권장 커밋 단위
 
-1. submission-ready ledger와 상태 전이 추가
-2. promote CLI 또는 상태 갱신 흐름 연결
-3. status summary와 inventory 출력 확장
+1. human review queue와 review state 계약 추가
+2. review decision workflow와 CLI 연결
+3. status summary와 review queue 출력 확장
 4. 문서 상태 업데이트
 
-## 11. `5-1` 진입 조건
+## 11. `5-2` 진입 조건
 
 - `pytest` 통과
-- `validate` CLI가 robust promotion artifact와 candidate stage update를 정상 기록함
-- `status`에서 robust candidate counts와 `robust_promotion_summary`가 조회 가능함
+- `promote` CLI가 submission-ready artifact와 inventory update를 정상 기록함
+- `status`에서 submission-ready counts와 `submission_ready_inventory`가 조회 가능함
