@@ -24,9 +24,11 @@ from strategic_alpha_engine.domain import (
     build_sample_research_agenda,
     build_sample_signal_blueprint,
 )
+from strategic_alpha_engine.domain.enums import FieldClass, ResearchHorizon
+from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
 
 
-def _write_output(payload: dict, output_path: str | None) -> None:
+def _write_output(payload: dict | list, output_path: str | None) -> None:
     rendered = json.dumps(payload, indent=2)
     if not output_path:
         print(rendered)
@@ -67,6 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
     config_parser.add_argument("--require-llm", action="store_true")
     config_parser.add_argument("--require-brain", action="store_true")
     config_parser.add_argument("--out", default=None)
+
+    catalog_parser = subparsers.add_parser("catalog", help="Inspect seeded metadata catalog")
+    catalog_parser.add_argument("--view", choices=["summary", "fields", "operators"], default="summary")
+    catalog_parser.add_argument("--field-class", choices=[field_class.value for field_class in FieldClass])
+    catalog_parser.add_argument("--horizon", choices=[horizon.value for horizon in ResearchHorizon])
+    catalog_parser.add_argument("--limit", type=int, default=10)
+    catalog_parser.add_argument("--out", default=None)
 
     return parser
 
@@ -121,6 +130,34 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             parser.exit(status=2, message=f"{exc}\n")
         payload = settings.model_dump(mode="json")
+        _write_output(payload, args.out)
+        return 0
+
+    if args.command == "catalog":
+        catalog = load_seed_metadata_catalog()
+        if args.view == "summary":
+            payload = {
+                "field_count": len(catalog.fields),
+                "operator_count": len(catalog.operators),
+                "field_ids": [field.field_id for field in catalog.fields],
+                "operator_ids": [operator.operator_id for operator in catalog.operators],
+            }
+        elif args.view == "fields":
+            field_classes = [args.field_class] if args.field_class else None
+            horizons = [args.horizon] if args.horizon else None
+            payload = [
+                entry.model_dump(mode="json")
+                for entry in catalog.build_field_excerpt(
+                    field_classes=field_classes,
+                    horizons=horizons,
+                    limit=args.limit,
+                )
+            ]
+        else:
+            payload = [
+                operator.model_dump(mode="json")
+                for operator in catalog.operators[: args.limit]
+            ]
         _write_output(payload, args.out)
         return 0
 

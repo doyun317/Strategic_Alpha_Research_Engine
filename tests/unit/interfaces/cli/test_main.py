@@ -39,3 +39,13 @@ def test_config_command_reports_missing_required_brain_settings(tmp_path, capsys
 
     assert exc_info.value.code == 2
     assert "Brain settings are required" in captured.err
+
+
+def test_catalog_command_prints_summary(capsys):
+    exit_code = main(["catalog", "--view", "summary"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["field_count"] >= 1
+    assert "close" in payload["field_ids"]
