@@ -61,8 +61,15 @@ class LocalArtifactFamilyAnalyticsBuilder:
         for family_key in family_keys:
             family_records = records_by_family.get(family_key, [])
             evaluations = evaluation_records_by_family.get(family_key, [])
+            family_candidate_ids = {
+                record.candidate_id
+                for record in family_records
+            } | {
+                evaluation.evaluation.candidate_id
+                for evaluation in evaluations
+            }
 
-            total_candidates = len(family_records)
+            total_candidates = len(family_candidate_ids)
             critique_passed_candidates = sum(
                 1 for record in family_records if record.stage in critique_passed_stages
             )
@@ -180,10 +187,10 @@ class LocalArtifactFamilyAnalyticsBuilder:
         latest_candidate_records: dict[str, CandidateStageRecord],
         family_by_run_id: dict[str, str],
     ) -> dict[str, list[EvaluationArtifactRecord]]:
-        evaluations_by_family: dict[str, list[EvaluationArtifactRecord]] = {}
+        latest_evaluations_by_family: dict[str, dict[str, EvaluationArtifactRecord]] = {}
         runs_root = artifacts_root / "runs"
         if not runs_root.exists():
-            return evaluations_by_family
+            return {}
 
         for evaluation_path in sorted(runs_root.glob("*/evaluations.jsonl")):
             for line in self._read_jsonl(evaluation_path):
@@ -197,8 +204,20 @@ class LocalArtifactFamilyAnalyticsBuilder:
                 )
                 if family is None:
                     continue
-                evaluations_by_family.setdefault(family, []).append(artifact)
-        return evaluations_by_family
+                family_evaluations = latest_evaluations_by_family.setdefault(family, {})
+                current_latest = family_evaluations.get(artifact.evaluation.candidate_id)
+                if current_latest is None or (
+                    artifact.evaluation.evaluated_at > current_latest.evaluation.evaluated_at
+                ):
+                    family_evaluations[artifact.evaluation.candidate_id] = artifact
+
+        return {
+            family: sorted(
+                evaluations.values(),
+                key=lambda artifact: artifact.evaluation.evaluated_at,
+            )
+            for family, evaluations in latest_evaluations_by_family.items()
+        }
 
     def _resolve_family_for_evaluation(
         self,

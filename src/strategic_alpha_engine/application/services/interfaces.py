@@ -27,6 +27,10 @@ from strategic_alpha_engine.domain.expression_candidate import ExpressionCandida
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
+from strategic_alpha_engine.domain.search_policy import (
+    AgendaPriorityRecommendation,
+    FamilyPolicyRecommendation,
+)
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
 from strategic_alpha_engine.domain.static_validation import StaticValidationReport
@@ -91,6 +95,21 @@ class FamilyAnalyticsBuilder(Protocol):
         *,
         candidate_stage_records: list[CandidateStageRecord],
     ): ...
+
+
+class SearchPolicyLearner(Protocol):
+    def recommend(
+        self,
+        summaries: list[FamilyLearnerSummary],
+    ) -> list[FamilyPolicyRecommendation]: ...
+
+
+class AgendaPrioritizer(Protocol):
+    def prioritize(
+        self,
+        agendas: list[ResearchAgenda],
+        family_recommendations: list[FamilyPolicyRecommendation],
+    ) -> list[AgendaPriorityRecommendation]: ...
 
 
 class ArtifactLedger(Protocol):
