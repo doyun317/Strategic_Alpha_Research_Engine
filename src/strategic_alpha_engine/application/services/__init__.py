@@ -1,4 +1,5 @@
 from strategic_alpha_engine.application.services.interfaces import (
+    BrainSimulationClient,
     BlueprintBuilder,
     CandidateSynthesizer,
     HypothesisPlanner,
@@ -14,6 +15,7 @@ from strategic_alpha_engine.application.services.static_planners import (
 )
 
 __all__ = [
+    "BrainSimulationClient",
     "BlueprintBuilder",
     "CandidateSynthesizer",
     "HypothesisPlanner",

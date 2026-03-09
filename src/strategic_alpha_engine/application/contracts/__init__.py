@@ -1,3 +1,8 @@
+from strategic_alpha_engine.application.contracts.simulation import (
+    BrainSimulationPollResult,
+    BrainSimulationResult,
+    BrainSimulationSubmission,
+)
 from strategic_alpha_engine.application.contracts.structured_generation import (
     BlueprintBuilderPromptInput,
     BlueprintBuilderPromptOutput,
@@ -9,6 +14,9 @@ from strategic_alpha_engine.application.contracts.structured_generation import (
 )
 
 __all__ = [
+    "BrainSimulationPollResult",
+    "BrainSimulationResult",
+    "BrainSimulationSubmission",
     "BlueprintBuilderPromptInput",
     "BlueprintBuilderPromptOutput",
     "FieldCatalogEntry",
@@ -17,4 +25,3 @@ __all__ = [
     "StrategicCriticPromptInput",
     "StrategicCriticPromptOutput",
 ]
-
