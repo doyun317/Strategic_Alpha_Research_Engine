@@ -269,3 +269,73 @@ def test_status_command_summarizes_local_ledgers(tmp_path, capsys):
     assert payload["family_stats"][0]["sim_passed_candidates"] == 4
     assert payload["family_stats"][0]["median_stage_a_sharpe"] == 1.21
     assert payload["family_learner_summaries"][0]["stage_a_pass_rate"] == 1.0
+    assert payload["learner_recommendations"][0]["family"] == "quality_deterioration"
+
+
+def test_policy_command_ranks_families_and_weights_agendas(tmp_path, capsys):
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "default.env").write_text(
+        "\n".join(
+            [
+                "SAE_ENV=test",
+                "SAE_REGION=USA",
+                "SAE_UNIVERSE=TOP3000",
+                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+    quality_agenda_path = tmp_path / "quality_agenda.json"
+    momentum_agenda_path = tmp_path / "momentum_agenda.json"
+    quality_agenda_path.write_text(
+        json.dumps(build_sample_research_agenda().model_dump(mode="json")),
+        encoding="utf-8",
+    )
+    momentum_agenda_path.write_text(
+        json.dumps(
+            build_sample_research_agenda().model_copy(
+                update={
+                    "agenda_id": "agenda.momentum.001",
+                    "name": "Momentum continuation queue",
+                    "family": "momentum",
+                    "priority": 0.65,
+                    "tags": ["momentum", "medium_horizon"],
+                }
+            ).model_dump(mode="json")
+        ),
+        encoding="utf-8",
+    )
+
+    simulate_exit_code = main(
+        [
+            "simulate",
+            "--settings-dir",
+            str(settings_dir),
+            "--artifacts-dir",
+            str(artifacts_dir),
+        ]
+    )
+    _ = capsys.readouterr()
+
+    exit_code = main(
+        [
+            "policy",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--agenda-in",
+            str(quality_agenda_path),
+            "--agenda-in",
+            str(momentum_agenda_path),
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert simulate_exit_code == 0
+    assert exit_code == 0
+    assert payload["family_recommendations"][0]["family"] == "quality_deterioration"
+    assert payload["agenda_recommendations"][0]["agenda_id"] == "agenda.quality_deterioration.001"
+    assert payload["agenda_recommendations"][0]["adjusted_priority"] > payload["agenda_recommendations"][1]["adjusted_priority"]

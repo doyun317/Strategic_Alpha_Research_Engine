@@ -13,7 +13,9 @@ from strategic_alpha_engine.application.contracts import (
     RunStateRecord,
 )
 from strategic_alpha_engine.application.services import (
+    FamilyWeightedAgendaPrioritizer,
     FamilyAnalyticsBundle,
+    HeuristicSearchPolicyLearner,
     LocalArtifactFamilyAnalyticsBuilder,
     MetadataBackedStaticValidator,
     RuleBasedStrategicCritic,
@@ -78,6 +80,12 @@ def _load_agenda(path: str | None) -> ResearchAgenda:
     if not path:
         return build_sample_research_agenda()
     return ResearchAgenda(**_read_input_payload(path))
+
+
+def _load_agendas(paths: list[str] | None) -> list[ResearchAgenda]:
+    if not paths:
+        return []
+    return [_load_agenda(path) for path in paths]
 
 
 def _load_hypothesis(path: str | None) -> HypothesisSpec:
@@ -195,6 +203,24 @@ def _build_family_analytics_bundle(
     )
 
 
+def _build_family_policy_recommendations(
+    learner_summaries: list[FamilyLearnerSummary],
+):
+    return HeuristicSearchPolicyLearner().recommend(learner_summaries)
+
+
+def _build_agenda_priority_recommendations(
+    agendas: list[ResearchAgenda],
+    family_recommendations,
+):
+    if not agendas:
+        return []
+    return FamilyWeightedAgendaPrioritizer().prioritize(
+        agendas,
+        family_recommendations,
+    )
+
+
 def _build_candidate_stage_records(
     *,
     run_id: str,
@@ -295,6 +321,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
             family_stats = analytics_bundle.family_stats
         if not learner_summaries:
             learner_summaries = analytics_bundle.learner_summaries
+    family_recommendations = _build_family_policy_recommendations(learner_summaries)
 
     latest_run_records = list(_latest_run_state_records(run_state_records).values())
     latest_run_records.sort(
@@ -390,6 +417,10 @@ def _build_status_summary(root_dir: str | Path) -> dict:
             summary.model_dump(mode="json")
             for summary in learner_summaries
         ],
+        "learner_recommendations": [
+            recommendation.model_dump(mode="json")
+            for recommendation in family_recommendations
+        ],
         "validation_backlog": {
             "total_entries": len(validation_backlog_entries),
             "counts_by_status": dict(sorted(backlog_counts.items())),
@@ -478,6 +509,14 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status", help="Summarize local artifact and state ledgers")
     status_parser.add_argument("--artifacts-dir", default="artifacts")
     status_parser.add_argument("--out", default=None)
+
+    policy_parser = subparsers.add_parser(
+        "policy",
+        help="Rank families from learner summaries and optionally weight agenda priorities",
+    )
+    policy_parser.add_argument("--artifacts-dir", default="artifacts")
+    policy_parser.add_argument("--agenda-in", action="append", default=None)
+    policy_parser.add_argument("--out", default=None)
 
     config_parser = subparsers.add_parser("config", help="Load and print runtime settings")
     config_parser.add_argument("--settings-dir", default=None)
@@ -710,6 +749,33 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "status":
         _write_output(_build_status_summary(args.artifacts_dir), args.out)
+        return 0
+
+    if args.command == "policy":
+        state_ledger = LocalFileStateLedger(args.artifacts_dir)
+        learner_summaries = state_ledger.load_family_learner_summaries()
+        if not learner_summaries:
+            analytics_bundle = _build_family_analytics_bundle(
+                args.artifacts_dir,
+                state_ledger.load_candidate_stage_records(),
+            )
+            learner_summaries = analytics_bundle.learner_summaries
+        family_recommendations = _build_family_policy_recommendations(learner_summaries)
+        agenda_recommendations = _build_agenda_priority_recommendations(
+            _load_agendas(args.agenda_in),
+            family_recommendations,
+        )
+        payload = {
+            "family_recommendations": [
+                recommendation.model_dump(mode="json")
+                for recommendation in family_recommendations
+            ],
+            "agenda_recommendations": [
+                recommendation.model_dump(mode="json")
+                for recommendation in agenda_recommendations
+            ],
+        }
+        _write_output(payload, args.out)
         return 0
 
     if args.command == "config":

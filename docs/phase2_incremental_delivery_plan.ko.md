@@ -118,7 +118,7 @@ git checkout -b phase2/2-3-static-validator
 | 2-11 | `phase2/2-11-simulate-and-status-cli` | 14.3, 14.8 실행 모드 | `simulate`, `status` CLI 추가 | simulate 실행과 status summary 출력 가능 | `completed` |
 | 2-12 | `phase2/2-12-evaluation-record-and-stage-a-promotion` | 11.9, 11.10 | `EvaluationRecord`와 Stage A 승격 구현 | `draft -> critique_passed -> sim_passed` 전이 확인 | `completed` |
 | 3-1 | `phase3/3-1-family-stats-ledger` | Phase 3, 11.11 | family 성과 집계 구조 추가 | family stats 갱신 테스트 통과 | `completed` |
-| 3-2 | `phase3/3-2-search-policy-learner` | 11.11 | heuristic search policy learner 추가 | family weighting / prioritization 테스트 통과 | `planned` |
+| 3-2 | `phase3/3-2-search-policy-learner` | 11.11 | heuristic search policy learner 추가 | family weighting / prioritization 테스트 통과 | `completed` |
 | 3-3 | `phase3/3-3-agenda-manager-and-research-loop` | 11.1, 14.5 | agenda manager와 `research-loop` 기초 추가 | loop 1회 실행 및 agenda selection 확인 | `planned` |
 | 4-1 | `phase4/4-1-validation-domain-and-cli` | 10.7, 14.6 | `ValidationRecord` 도메인과 `validate` CLI 추가 | validation input/output 구조 테스트 통과 | `planned` |
 | 4-2 | `phase4/4-2-multi-period-validation-runner` | 11.9, Phase 4 | Stage B/C 다중 기간 검증 runner 추가 | `P3Y0M0D`, `P5Y0M0D` validation 흐름 확인 | `planned` |
@@ -192,30 +192,32 @@ git checkout -b phase2/2-3-static-validator
 - 다음 브랜치가 현재 브랜치 결과물을 안정적으로 재사용할 수 있는가
 - 로컬 파일 저장 포맷이 사람이 직접 읽을 수 있는가
 
-## 9. 현재 작업 범위: 3-2
+## 9. 현재 작업 범위: 3-3
 
 다음 브랜치에서 처리할 내용:
 
-- heuristic family weighting 추가
-- learner explanation 필드와 agenda 입력 형식 정의
-- family summary를 prioritization 점수로 연결
-- 관련 단위 테스트 추가
+- bounded `research-loop` 실행 모드 추가
+- family recommendation을 agenda queue selection으로 연결
+- agenda manager 또는 동등한 selection service 추가
+- loop run state / status summary 갱신 로직 추가
+- 관련 단위 테스트와 CLI smoke test 추가
 
 이번 브랜치에서 일부러 하지 않는 내용:
 
-- research loop 실행
-- validate / promote 실행 모드
+- multi-period validation
+- robust candidate 승격
 - Bayesian / contextual bandit
+- external scheduler 연동
 
-## 10. `3-2` 권장 커밋 단위
+## 10. `3-3` 권장 커밋 단위
 
-1. heuristic learner 추가
-2. family weighting 테스트 추가
-3. agenda scoring 입력 연결
+1. agenda manager와 selection contract 추가
+2. bounded research-loop workflow 추가
+3. loop status/state 갱신 연결
 4. 문서 상태 업데이트
 
-## 11. `3-2` 진입 조건
+## 11. `3-3` 진입 조건
 
 - `pytest` 통과
-- learner가 family summary를 받아 점수를 계산할 수 있음
-- prioritization 입력 contract가 고정되어 있음
+- learner recommendation이 agenda prioritization 입력으로 연결되어 있음
+- loop 1회 실행에 필요한 artifact/state ledger가 이미 준비되어 있음

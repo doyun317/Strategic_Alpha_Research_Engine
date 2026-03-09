@@ -107,6 +107,18 @@ python -m strategic_alpha_engine status --artifacts-dir artifacts
 python -m strategic_alpha_engine status --artifacts-dir artifacts --out artifacts/reports/latest_status.json
 ```
 
+Inspect learner recommendations and optionally weight agendas:
+
+```bash
+python -m strategic_alpha_engine policy --artifacts-dir artifacts
+
+# optionally pass multiple agenda payloads to get family-weighted priorities
+python -m strategic_alpha_engine policy \
+  --artifacts-dir artifacts \
+  --agenda-in tmp/agenda_quality.json \
+  --agenda-in tmp/agenda_momentum.json
+```
+
 ## Schema Commands
 
 Print JSON schema:
@@ -155,6 +167,7 @@ Current implementation includes:
 - local manifest-based state ledger for candidate/run/family state and status summaries
 - artifact persistence for `evaluations.jsonl` and `promotion.jsonl`
 - learner-ready family stats and `family_learner_summaries.json`
+- heuristic family policy recommendations and agenda weighting via `policy`
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic
