@@ -7,6 +7,7 @@ from strategic_alpha_engine.domain.expression_candidate import ExpressionCandida
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
+from strategic_alpha_engine.domain.static_validation import StaticValidationReport
 
 
 class HypothesisPlanner(Protocol):
@@ -21,6 +22,14 @@ class CandidateSynthesizer(Protocol):
     def synthesize(self, blueprint: SignalBlueprint) -> list[ExpressionCandidate]: ...
 
 
+class StaticValidator(Protocol):
+    def validate(
+        self,
+        blueprint: SignalBlueprint,
+        candidate: ExpressionCandidate,
+    ) -> StaticValidationReport: ...
+
+
 class StrategicCritic(Protocol):
     def critique(
         self,
@@ -28,4 +37,3 @@ class StrategicCritic(Protocol):
         blueprint: SignalBlueprint,
         candidate: ExpressionCandidate,
     ) -> CritiqueReport: ...
-

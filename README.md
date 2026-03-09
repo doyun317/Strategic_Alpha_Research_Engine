@@ -108,6 +108,7 @@ src/strategic_alpha_engine/
 
 Current implementation includes:
 - domain schemas for agenda, hypothesis, blueprint, candidate, critique
+- metadata-backed static validator before critique
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic

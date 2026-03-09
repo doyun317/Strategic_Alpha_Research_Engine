@@ -88,6 +88,15 @@ def load_seed_metadata_catalog() -> MetadataCatalog:
         ],
         operators=[
             OperatorMetadata(
+                operator_id="add",
+                category=OperatorCategory.ARITHMETIC,
+                min_arity=2,
+                max_arity=2,
+                requires_lookback=False,
+                supports_constants=True,
+                notes="Pairwise addition is allowed when used for stable denominator guards.",
+            ),
+            OperatorMetadata(
                 operator_id="rank",
                 category=OperatorCategory.CROSS_SECTIONAL,
                 min_arity=1,
@@ -102,7 +111,7 @@ def load_seed_metadata_catalog() -> MetadataCatalog:
                 min_arity=2,
                 max_arity=2,
                 requires_lookback=True,
-                supports_constants=False,
+                supports_constants=True,
                 discouraged_for_cadences=[UpdateCadence.QUARTERLY, UpdateCadence.SLOW, UpdateCadence.IRREGULAR],
                 notes="Use conservative lookbacks when applied to slow or sparse fields.",
             ),
@@ -112,7 +121,7 @@ def load_seed_metadata_catalog() -> MetadataCatalog:
                 min_arity=2,
                 max_arity=2,
                 requires_lookback=True,
-                supports_constants=False,
+                supports_constants=True,
                 notes="Useful for volatility scaling on reasonably fast-updating series.",
             ),
             OperatorMetadata(
@@ -130,7 +139,7 @@ def load_seed_metadata_catalog() -> MetadataCatalog:
                 min_arity=2,
                 max_arity=2,
                 requires_lookback=False,
-                supports_constants=False,
+                supports_constants=True,
                 notes="Simple spread construction for pairwise economic relationships.",
             ),
             OperatorMetadata(
@@ -148,7 +157,7 @@ def load_seed_metadata_catalog() -> MetadataCatalog:
                 min_arity=2,
                 max_arity=2,
                 requires_lookback=True,
-                supports_constants=False,
+                supports_constants=True,
                 discouraged_for_cadences=[UpdateCadence.QUARTERLY, UpdateCadence.SLOW, UpdateCadence.IRREGULAR],
                 notes="Often pseudo-time-series on slow fields unless lookbacks are conservative.",
             ),

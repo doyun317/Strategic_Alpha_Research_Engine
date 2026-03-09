@@ -49,3 +49,13 @@ def test_catalog_command_prints_summary(capsys):
     assert exit_code == 0
     assert payload["field_count"] >= 1
     assert "close" in payload["field_ids"]
+
+
+def test_example_command_prints_static_validation_payload(capsys):
+    exit_code = main(["example", "--model", "static_validation"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["passes"] is True
+    assert payload["validator_name"] == "metadata_backed_static_validator"

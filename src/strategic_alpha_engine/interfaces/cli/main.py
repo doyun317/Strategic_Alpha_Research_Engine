@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from strategic_alpha_engine.application.services import (
+    MetadataBackedStaticValidator,
     RuleBasedStrategicCritic,
     SkeletonCandidateSynthesizer,
     StaticBlueprintBuilder,
@@ -18,6 +19,7 @@ from strategic_alpha_engine.domain import (
     HypothesisSpec,
     SignalBlueprint,
     ResearchAgenda,
+    StaticValidationReport,
     build_sample_critique_report,
     build_sample_expression_candidate,
     build_sample_hypothesis_spec,
@@ -45,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     schema_parser = subparsers.add_parser("schema", help="Print JSON schema for a model")
     schema_parser.add_argument(
         "--model",
-        choices=["agenda", "hypothesis", "blueprint", "candidate", "critique"],
+        choices=["agenda", "hypothesis", "blueprint", "candidate", "critique", "static_validation"],
         required=True,
     )
     schema_parser.add_argument("--out", default=None)
@@ -53,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     example_parser = subparsers.add_parser("example", help="Print example payload for a model")
     example_parser.add_argument(
         "--model",
-        choices=["agenda", "hypothesis", "blueprint", "candidate", "critique"],
+        choices=["agenda", "hypothesis", "blueprint", "candidate", "critique", "static_validation"],
         required=True,
     )
     example_parser.add_argument("--out", default=None)
@@ -91,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
             "blueprint": SignalBlueprint.model_json_schema(),
             "candidate": ExpressionCandidate.model_json_schema(),
             "critique": CritiqueReport.model_json_schema(),
+            "static_validation": StaticValidationReport.model_json_schema(),
         }
         payload = schema_map[args.model]
         _write_output(payload, args.out)
@@ -103,6 +106,12 @@ def main(argv: list[str] | None = None) -> int:
             "blueprint": build_sample_signal_blueprint().model_dump(),
             "candidate": build_sample_expression_candidate().model_dump(),
             "critique": build_sample_critique_report().model_dump(),
+            "static_validation": MetadataBackedStaticValidator(
+                load_seed_metadata_catalog()
+            ).validate(
+                build_sample_signal_blueprint(),
+                build_sample_expression_candidate(),
+            ).model_dump(),
         }
         payload = example_map[args.model]
         _write_output(payload, args.out)
@@ -113,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             hypothesis_planner=StaticHypothesisPlanner(),
             blueprint_builder=StaticBlueprintBuilder(),
             candidate_synthesizer=SkeletonCandidateSynthesizer(),
+            static_validator=MetadataBackedStaticValidator(load_seed_metadata_catalog()),
             strategic_critic=RuleBasedStrategicCritic(),
         )
         result = workflow.run(build_sample_research_agenda())

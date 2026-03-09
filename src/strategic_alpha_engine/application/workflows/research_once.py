@@ -6,6 +6,7 @@ from strategic_alpha_engine.application.services.interfaces import (
     BlueprintBuilder,
     CandidateSynthesizer,
     HypothesisPlanner,
+    StaticValidator,
     StrategicCritic,
 )
 from strategic_alpha_engine.domain.base import EngineModel
@@ -14,11 +15,13 @@ from strategic_alpha_engine.domain.expression_candidate import ExpressionCandida
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
+from strategic_alpha_engine.domain.static_validation import StaticValidationReport
 
 
 class CandidateEvaluation(EngineModel):
     candidate: ExpressionCandidate
-    critique: CritiqueReport
+    validation: StaticValidationReport
+    critique: CritiqueReport | None = None
 
 
 class ResearchOnceResult(EngineModel):
@@ -36,11 +39,13 @@ class ResearchOnceWorkflow:
         hypothesis_planner: HypothesisPlanner,
         blueprint_builder: BlueprintBuilder,
         candidate_synthesizer: CandidateSynthesizer,
+        static_validator: StaticValidator,
         strategic_critic: StrategicCritic,
     ):
         self.hypothesis_planner = hypothesis_planner
         self.blueprint_builder = blueprint_builder
         self.candidate_synthesizer = candidate_synthesizer
+        self.static_validator = static_validator
         self.strategic_critic = strategic_critic
 
     def run(self, agenda: ResearchAgenda) -> ResearchOnceResult:
@@ -53,8 +58,25 @@ class ResearchOnceWorkflow:
         rejected: list[str] = []
 
         for candidate in candidates:
+            validation = self.static_validator.validate(blueprint, candidate)
+            if not validation.passes:
+                evaluations.append(
+                    CandidateEvaluation(
+                        candidate=candidate,
+                        validation=validation,
+                    )
+                )
+                rejected.append(candidate.candidate_id)
+                continue
+
             critique = self.strategic_critic.critique(hypothesis, blueprint, candidate)
-            evaluations.append(CandidateEvaluation(candidate=candidate, critique=critique))
+            evaluations.append(
+                CandidateEvaluation(
+                    candidate=candidate,
+                    validation=validation,
+                    critique=critique,
+                )
+            )
             if critique.passes:
                 accepted.append(candidate.candidate_id)
             else:
@@ -68,4 +90,3 @@ class ResearchOnceWorkflow:
             accepted_candidate_ids=accepted,
             rejected_candidate_ids=rejected,
         )
-

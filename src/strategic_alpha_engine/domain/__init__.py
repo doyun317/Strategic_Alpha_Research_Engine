@@ -16,6 +16,7 @@ from strategic_alpha_engine.domain.metadata_catalog import (
 )
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
+from strategic_alpha_engine.domain.static_validation import StaticValidationIssue, StaticValidationReport
 
 __all__ = [
     "CritiqueIssue",
@@ -28,6 +29,8 @@ __all__ = [
     "OperatorMetadata",
     "ResearchAgenda",
     "SignalBlueprint",
+    "StaticValidationIssue",
+    "StaticValidationReport",
     "build_sample_critique_report",
     "build_sample_expression_candidate",
     "build_sample_hypothesis_spec",
