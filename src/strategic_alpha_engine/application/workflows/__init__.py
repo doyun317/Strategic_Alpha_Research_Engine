@@ -19,6 +19,11 @@ from strategic_alpha_engine.application.workflows.synthesize import (
     SynthesizeResult,
     SynthesizeWorkflow,
 )
+from strategic_alpha_engine.application.workflows.validate import (
+    ValidateResult,
+    ValidateWorkflow,
+    ValidationOutcome,
+)
 
 __all__ = [
     "CandidateEvaluation",
@@ -35,4 +40,7 @@ __all__ = [
     "StageAEvaluationWorkflow",
     "SynthesizeResult",
     "SynthesizeWorkflow",
+    "ValidateResult",
+    "ValidateWorkflow",
+    "ValidationOutcome",
 ]

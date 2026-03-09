@@ -271,6 +271,7 @@ def test_status_command_summarizes_local_ledgers(tmp_path, capsys):
     assert payload["family_stats"][0]["median_stage_a_sharpe"] == 1.21
     assert payload["family_learner_summaries"][0]["stage_a_pass_rate"] == 1.0
     assert payload["learner_recommendations"][0]["family"] == "quality_deterioration"
+    assert payload["validation_summary"]["total_records"] == 0
 
 
 def test_policy_command_ranks_families_and_weights_agendas(tmp_path, capsys):
@@ -393,3 +394,66 @@ def test_research_loop_command_executes_multiple_iterations_and_updates_queue_st
     assert status_payload["agenda_queue"]["selected_agenda_id"] == "agenda.momentum.001"
     assert status_payload["agenda_queue"]["total_entries"] == 3
     assert status_payload["candidate_stage_counts"]["sim_passed"] == 7
+
+
+def test_validate_command_persists_validation_artifacts_and_updates_status(tmp_path, capsys):
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "default.env").write_text(
+        "\n".join(
+            [
+                "SAE_ENV=test",
+                "SAE_REGION=USA",
+                "SAE_UNIVERSE=TOP3000",
+                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+
+    simulate_exit_code = main(
+        [
+            "simulate",
+            "--settings-dir",
+            str(settings_dir),
+            "--artifacts-dir",
+            str(artifacts_dir),
+        ]
+    )
+    simulate_captured = capsys.readouterr()
+    simulate_payload = json.loads(simulate_captured.out)
+
+    validate_exit_code = main(
+        [
+            "validate",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--source-run-id",
+            simulate_payload["run_id"],
+            "--period",
+            "P3Y0M0D",
+        ]
+    )
+    validate_captured = capsys.readouterr()
+    validate_payload = json.loads(validate_captured.out)
+
+    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
+    status_captured = capsys.readouterr()
+    status_payload = json.loads(status_captured.out)
+
+    run_dir = artifacts_dir / "runs" / validate_payload["run_id"]
+
+    assert simulate_exit_code == 0
+    assert validate_exit_code == 0
+    assert status_exit_code == 0
+    assert validate_payload["validation_stage"] == "stage_b"
+    assert validate_payload["period"] == "P3Y0M0D"
+    assert len(validate_payload["validated_candidate_ids"]) == 4
+    assert validate_payload["passed_candidate_ids"] == validate_payload["validated_candidate_ids"]
+    assert (run_dir / "validations.jsonl").exists()
+    assert status_payload["validation_backlog"]["counts_by_status"]["completed"] == 4
+    assert status_payload["validation_summary"]["total_records"] == 4
+    assert status_payload["validation_summary"]["counts_by_stage"]["stage_b"] == 4
+    assert status_payload["runs"]["counts_by_kind"]["validate"] == 1

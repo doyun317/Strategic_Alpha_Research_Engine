@@ -120,7 +120,7 @@ git checkout -b phase2/2-3-static-validator
 | 3-1 | `phase3/3-1-family-stats-ledger` | Phase 3, 11.11 | family 성과 집계 구조 추가 | family stats 갱신 테스트 통과 | `completed` |
 | 3-2 | `phase3/3-2-search-policy-learner` | 11.11 | heuristic search policy learner 추가 | family weighting / prioritization 테스트 통과 | `completed` |
 | 3-3 | `phase3/3-3-agenda-manager-and-research-loop` | 11.1, 14.5 | agenda manager와 `research-loop` 기초 추가 | loop 1회 실행 및 agenda selection 확인 | `completed` |
-| 4-1 | `phase4/4-1-validation-domain-and-cli` | 10.7, 14.6 | `ValidationRecord` 도메인과 `validate` CLI 추가 | validation input/output 구조 테스트 통과 | `planned` |
+| 4-1 | `phase4/4-1-validation-domain-and-cli` | 10.7, 14.6 | `ValidationRecord` 도메인과 `validate` CLI 추가 | validation input/output 구조 테스트 통과 | `completed` |
 | 4-2 | `phase4/4-2-multi-period-validation-runner` | 11.9, Phase 4 | Stage B/C 다중 기간 검증 runner 추가 | `P3Y0M0D`, `P5Y0M0D` validation 흐름 확인 | `planned` |
 | 4-3 | `phase4/4-3-robust-candidate-promotion` | 11.10, Phase 4 | robust candidate 승격 규칙 추가 | `sim_passed -> robust_candidate` 전이 확인 | `planned` |
 | 5-1 | `phase5/5-1-submission-ready-ledger` | 10.8, Phase 5 | submission-ready 상태 기록 구조 추가 | submission-ready 후보 ledger 생성 확인 | `planned` |
@@ -192,32 +192,32 @@ git checkout -b phase2/2-3-static-validator
 - 다음 브랜치가 현재 브랜치 결과물을 안정적으로 재사용할 수 있는가
 - 로컬 파일 저장 포맷이 사람이 직접 읽을 수 있는가
 
-## 9. 현재 작업 범위: 4-1
+## 9. 현재 작업 범위: 4-2
 
 다음 브랜치에서 처리할 내용:
 
-- `ValidationRecord` 도메인 추가
-- `validate` CLI 입력/출력 구조 고정
-- Stage B/C validation backlog와 연결될 최소 contract 정의
-- validation artifact/state 저장 포맷 초안 추가
+- multi-period validation runner 추가
+- `P1Y0M0D`, `P3Y0M0D`, `P5Y0M0D` 기간 반복 실행과 결과 집계
+- period별 pass/fail matrix 및 aggregate rule 추가
+- validation backlog 소비 흐름을 다중 기간 기준으로 확장
 - 관련 단위 테스트와 CLI smoke test 추가
 
 이번 브랜치에서 일부러 하지 않는 내용:
 
-- multi-period validation runner 전체 구현
 - robust candidate 승격
 - submission-ready 판단
 - human review queue
+- stage_c detailed checks 전체 구현
 
-## 10. `4-1` 권장 커밋 단위
+## 10. `4-2` 권장 커밋 단위
 
-1. validation domain contract 추가
-2. validate CLI와 local persistence 추가
-3. backlog 연결용 state/artifact contract 정리
+1. multi-period validation workflow 추가
+2. validation aggregate result 및 matrix 정리
+3. backlog 소비와 status summary 확장
 4. 문서 상태 업데이트
 
-## 11. `4-1` 진입 조건
+## 11. `4-2` 진입 조건
 
 - `pytest` 통과
-- `research-loop`가 artifact/state를 정상 갱신함
-- agenda queue와 family summary가 status에서 조회 가능함
+- `validate` CLI가 single-period validation artifact와 backlog를 정상 기록함
+- `status`에서 validation summary와 backlog counts가 조회 가능함

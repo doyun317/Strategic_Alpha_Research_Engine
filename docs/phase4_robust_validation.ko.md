@@ -91,6 +91,11 @@
 2. `phase4/4-2-multi-period-validation-runner`
 3. `phase4/4-3-robust-candidate-promotion`
 
+현재 진행 상태:
+
+- `4-1 validation domain and CLI`: 완료
+- 다음 작업: `4-2 multi-period validation runner`
+
 ## 6. 구현 원칙
 
 ### 6.1 Stage A와 validation을 분리

@@ -8,6 +8,7 @@ from strategic_alpha_engine.application.contracts.artifacts import (
     EvaluationArtifactRecord,
     PromotionArtifactRecord,
     SimulationArtifactRecord,
+    ValidationArtifactRecord,
 )
 from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationPollResult,
@@ -36,6 +37,8 @@ from strategic_alpha_engine.domain.search_policy import (
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
 from strategic_alpha_engine.domain.static_validation import StaticValidationReport
+from strategic_alpha_engine.domain.enums import ValidationStage
+from strategic_alpha_engine.domain.validation import ValidationRecord
 
 
 class HypothesisPlanner(Protocol):
@@ -88,6 +91,20 @@ class StageAEvaluator(Protocol):
 
 class PromotionDecider(Protocol):
     def decide(self, evaluation: EvaluationRecord) -> PromotionDecision: ...
+
+
+class ValidationRunner(Protocol):
+    def validate(
+        self,
+        candidate: ExpressionCandidate,
+        hypothesis: HypothesisSpec,
+        blueprint: SignalBlueprint,
+        *,
+        source_run_id: str,
+        candidate_source_run_id: str,
+        validation_stage: ValidationStage,
+        period: str,
+    ) -> ValidationRecord: ...
 
 
 class FamilyAnalyticsBuilder(Protocol):
@@ -156,6 +173,12 @@ class ArtifactLedger(Protocol):
         self,
         run_id: str,
         records: list[PromotionArtifactRecord],
+    ) -> Path: ...
+
+    def write_validation_records(
+        self,
+        run_id: str,
+        records: list[ValidationArtifactRecord],
     ) -> Path: ...
 
 

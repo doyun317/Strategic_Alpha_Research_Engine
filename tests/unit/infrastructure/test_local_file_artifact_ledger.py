@@ -5,6 +5,7 @@ from strategic_alpha_engine.application.services import (
     RuleBasedStrategicCritic,
     RuleBasedStageAEvaluator,
     RuleBasedStageAPromotionDecider,
+    RuleBasedValidationRunner,
     SkeletonCandidateSynthesizer,
     StaticBlueprintBuilder,
     StaticHypothesisPlanner,
@@ -15,7 +16,9 @@ from strategic_alpha_engine.application.workflows import (
     SimulationOrchestratorWorkflow,
     StageAEvaluationWorkflow,
     SynthesizeWorkflow,
+    ValidateWorkflow,
 )
+from strategic_alpha_engine.domain.enums import ValidationStage
 from strategic_alpha_engine.domain.examples import build_sample_research_agenda
 from strategic_alpha_engine.infrastructure import FakeBrainSimulationClient, LocalFileArtifactLedger
 from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
@@ -126,3 +129,44 @@ def test_local_file_artifact_ledger_keeps_existing_agenda_when_writing_simulatio
     assert _read_json(run_dir / "agenda.json")["agenda_id"] == "agenda.quality_deterioration.001"
     assert len(_read_jsonl(run_dir / "simulations.jsonl")) == 4
     assert len(_read_jsonl(run_dir / "promotion.jsonl")) == 4
+
+
+def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
+    plan_result = PlanWorkflow(
+        hypothesis_planner=StaticHypothesisPlanner(),
+        blueprint_builder=StaticBlueprintBuilder(),
+    ).run(build_sample_research_agenda())
+    synthesize_result = SynthesizeWorkflow(
+        candidate_synthesizer=SkeletonCandidateSynthesizer(),
+        static_validator=MetadataBackedStaticValidator(load_seed_metadata_catalog()),
+        strategic_critic=RuleBasedStrategicCritic(),
+    ).run(
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+    )
+    ledger = LocalFileArtifactLedger(tmp_path / "artifacts")
+    run_id = "validate.quality_deterioration.001"
+    validate_result = ValidateWorkflow(
+        validation_runner=RuleBasedValidationRunner(),
+    ).run(
+        source_run_id=run_id,
+        candidate_source_run_id="simulate.quality_deterioration.001",
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+        candidates=[evaluation.candidate for evaluation in synthesize_result.evaluations[:2]],
+        validation_stage=ValidationStage.STAGE_B,
+        period="P3Y0M0D",
+    )
+
+    ledger.write_validation_result(
+        run_id,
+        validate_result,
+        agenda=plan_result.agenda,
+    )
+
+    run_dir = tmp_path / "artifacts" / "runs" / run_id
+    validations = _read_jsonl(run_dir / "validations.jsonl")
+
+    assert _read_json(run_dir / "agenda.json")["agenda_id"] == "agenda.quality_deterioration.001"
+    assert len(validations) == 2
+    assert validations[0]["candidate"]["candidate_id"] == validations[0]["validation"]["candidate_id"]

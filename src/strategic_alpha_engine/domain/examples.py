@@ -13,6 +13,7 @@ from strategic_alpha_engine.domain.enums import (
     RiskControlKind,
     TransformKind,
     UpdateCadence,
+    ValidationStage,
 )
 from strategic_alpha_engine.domain.evaluation import EvaluationRecord
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
@@ -21,6 +22,7 @@ from strategic_alpha_engine.domain.critique_report import CritiqueIssue, Critiqu
 from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
+from strategic_alpha_engine.domain.validation import ValidationRecord
 from strategic_alpha_engine.domain.signal_blueprint import (
     FieldSelection,
     NormalizationSpec,
@@ -327,4 +329,29 @@ def build_sample_promotion_decision() -> PromotionDecision:
         decision=PromotionDecisionKind.PROMOTE,
         reasons=["stage_a_passed"],
         decided_at=evaluation.evaluated_at,
+    )
+
+
+def build_sample_validation_record() -> ValidationRecord:
+    candidate = build_sample_expression_candidate()
+    return ValidationRecord(
+        validation_id="validation.quality_deterioration.001.stage_b",
+        candidate_id=candidate.candidate_id,
+        hypothesis_id=candidate.hypothesis_id,
+        blueprint_id=candidate.blueprint_id,
+        source_run_id="validate.quality_deterioration.001",
+        candidate_source_run_id="simulate.quality_deterioration.001",
+        validation_stage=ValidationStage.STAGE_B,
+        period="P3Y0M0D",
+        status="succeeded",
+        sharpe=1.04,
+        fitness=0.92,
+        turnover=0.16,
+        returns=0.12,
+        drawdown=0.07,
+        checks=["period_ok", "turnover_ok", "grade_ok"],
+        grade="A",
+        pass_decision=True,
+        reasons=["meets_stage_b_thresholds"],
+        validated_at=datetime(2026, 1, 18, 10, 30, tzinfo=timezone.utc),
     )

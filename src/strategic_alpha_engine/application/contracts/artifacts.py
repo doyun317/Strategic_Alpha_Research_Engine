@@ -14,6 +14,7 @@ from strategic_alpha_engine.domain.expression_candidate import ExpressionCandida
 from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
 from strategic_alpha_engine.domain.static_validation import StaticValidationReport
+from strategic_alpha_engine.domain.validation import ValidationRecord
 
 
 class CandidateArtifactRecord(EngineModel):
@@ -101,4 +102,19 @@ class PromotionArtifactRecord(EngineModel):
             raise ValueError("promotion.blueprint_id must match evaluation.blueprint_id")
         if self.promotion.source_run_id != self.evaluation.source_run_id:
             raise ValueError("promotion.source_run_id must match evaluation.source_run_id")
+        return self
+
+
+class ValidationArtifactRecord(EngineModel):
+    candidate: ExpressionCandidate
+    validation: ValidationRecord
+
+    @model_validator(mode="after")
+    def validate_lineage(self) -> "ValidationArtifactRecord":
+        if self.validation.candidate_id != self.candidate.candidate_id:
+            raise ValueError("validation.candidate_id must match candidate.candidate_id")
+        if self.validation.hypothesis_id != self.candidate.hypothesis_id:
+            raise ValueError("validation.hypothesis_id must match candidate.hypothesis_id")
+        if self.validation.blueprint_id != self.candidate.blueprint_id:
+            raise ValueError("validation.blueprint_id must match candidate.blueprint_id")
         return self
