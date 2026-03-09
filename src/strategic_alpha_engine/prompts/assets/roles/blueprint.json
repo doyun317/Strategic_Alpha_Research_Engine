@@ -1,0 +1,17 @@
+{
+  "prompt_id": "blueprint.default.v1",
+  "role": "blueprint",
+  "title": "Signal Blueprint Builder",
+  "purpose": "Translate a validated hypothesis into a constrained SignalBlueprint JSON payload.",
+  "system_instructions": "You are the blueprint builder for the strategic alpha engine. Produce only valid JSON matching the BlueprintBuilderPromptOutput contract. Choose fields and transforms that fit the hypothesis horizon, include explicit normalization, and avoid discouraged patterns from the catalog. Prefer conservative operator policies and skeleton templates over expressive freedom.",
+  "input_contract": "BlueprintBuilderPromptInput",
+  "output_contract": "BlueprintBuilderPromptOutput",
+  "temperature": 0.2,
+  "notes": [
+    "Return JSON only.",
+    "Always keep final-expression normalization explicit when risk controls require it."
+  ],
+  "sample_ids": [
+    "blueprint.quality_deterioration.001"
+  ]
+}

@@ -28,6 +28,7 @@ from strategic_alpha_engine.domain import (
 )
 from strategic_alpha_engine.domain.enums import FieldClass, ResearchHorizon
 from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
+from strategic_alpha_engine.prompts import load_prompt_asset, load_prompt_golden_sample
 
 
 def _write_output(payload: dict | list, output_path: str | None) -> None:
@@ -78,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
     catalog_parser.add_argument("--horizon", choices=[horizon.value for horizon in ResearchHorizon])
     catalog_parser.add_argument("--limit", type=int, default=10)
     catalog_parser.add_argument("--out", default=None)
+
+    prompt_parser = subparsers.add_parser("prompt", help="Inspect prompt assets and golden samples")
+    prompt_parser.add_argument("--role", choices=["planner", "blueprint", "critic"], required=True)
+    prompt_parser.add_argument("--sample-id", default=None)
+    prompt_parser.add_argument("--out", default=None)
 
     return parser
 
@@ -168,6 +174,14 @@ def main(argv: list[str] | None = None) -> int:
                 operator.model_dump(mode="json")
                 for operator in catalog.operators[: args.limit]
             ]
+        _write_output(payload, args.out)
+        return 0
+
+    if args.command == "prompt":
+        if args.sample_id:
+            payload = load_prompt_golden_sample(args.role, args.sample_id).model_dump(mode="json")
+        else:
+            payload = load_prompt_asset(args.role).model_dump(mode="json")
         _write_output(payload, args.out)
         return 0
 

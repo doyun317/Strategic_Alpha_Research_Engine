@@ -1,0 +1,161 @@
+{
+  "sample_id": "blueprint.quality_deterioration.001",
+  "prompt_id": "blueprint.default.v1",
+  "role": "blueprint",
+  "input_payload": {
+    "hypothesis": {
+      "hypothesis_id": "hyp.quality_deterioration.001",
+      "agenda_id": "agenda.quality_deterioration.001",
+      "family": "quality_deterioration",
+      "thesis_name": "Leverage rising while cash generation weakens",
+      "economic_rationale": "Firms with weakening operating cash generation relative to leverage tend to underperform on a medium horizon.",
+      "expected_direction": "lower_signal_outperforms",
+      "horizon": "medium",
+      "target_region": "USA",
+      "target_universe": "TOP3000",
+      "market_context": "Explore firms where leverage worsens while cash generation deteriorates, with conservative normalization and low structural risk.",
+      "field_classes": ["fundamental", "price"],
+      "preferred_update_cadences": ["quarterly", "daily"],
+      "risk_notes": ["Require final cross-sectional normalization"],
+      "evidence_requirements": ["Positive risk-adjusted performance", "No severe critique issues"],
+      "forbidden_patterns": ["short_delay_on_slow_fundamentals", "raw_level_only"],
+      "confidence": 0.8,
+      "author": "planner_prompt_sample"
+    },
+    "field_catalog_excerpt": [
+      {
+        "field_id": "cashflow_op",
+        "field_class": "fundamental",
+        "update_cadence": "quarterly",
+        "description": "Operating cashflow for detecting quality improvement or deterioration.",
+        "recommended_horizons": ["medium", "long"],
+        "discouraged_patterns": ["short_delay_on_slow_fundamentals", "raw_level_only"]
+      },
+      {
+        "field_id": "debt_lt",
+        "field_class": "fundamental",
+        "update_cadence": "quarterly",
+        "description": "Long-term debt level for leverage-related quality research.",
+        "recommended_horizons": ["medium", "long"],
+        "discouraged_patterns": ["short_delay_on_slow_fundamentals", "raw_level_only"]
+      },
+      {
+        "field_id": "close",
+        "field_class": "price",
+        "update_cadence": "daily",
+        "description": "Adjusted close price for liquid common equities.",
+        "recommended_horizons": ["short", "medium", "long"],
+        "discouraged_patterns": ["raw_level_only"]
+      }
+    ],
+    "policy_notes": [
+      "Keep outer rank explicit.",
+      "Use slow fundamental lookbacks conservatively."
+    ],
+    "output_contract": "SignalBlueprint"
+  },
+  "output_payload": {
+    "blueprint": {
+      "blueprint_id": "bp.quality_deterioration.001",
+      "hypothesis_id": "hyp.quality_deterioration.001",
+      "summary": "Medium-horizon quality deterioration with final cross-sectional ranking.",
+      "expression_intent": "Compare weakening cash generation against leverage build-up.",
+      "field_selections": [
+        {
+          "field_id": "cashflow_op",
+          "field_class": "fundamental",
+          "update_cadence": "quarterly",
+          "role": "primary_signal",
+          "rationale": "Operating cashflow deterioration is the quality signal core."
+        },
+        {
+          "field_id": "debt_lt",
+          "field_class": "fundamental",
+          "update_cadence": "quarterly",
+          "role": "denominator_scale",
+          "rationale": "Long-term debt reflects leverage deterioration."
+        },
+        {
+          "field_id": "close",
+          "field_class": "price",
+          "update_cadence": "daily",
+          "role": "confirmation",
+          "rationale": "Cross-sectional stability anchor for conservative synthesis."
+        }
+      ],
+      "primary_fields": ["cashflow_op", "debt_lt"],
+      "secondary_fields": ["close"],
+      "transform_plan": [
+        {
+          "name": "cashflow_delta_63",
+          "kind": "delta",
+          "input_fields": ["cashflow_op"],
+          "lookback_days": 63,
+          "constant": null,
+          "rationale": "Use a medium-horizon change signal for a slow fundamental field."
+        },
+        {
+          "name": "debt_delta_63",
+          "kind": "delta",
+          "input_fields": ["debt_lt"],
+          "lookback_days": 63,
+          "constant": null,
+          "rationale": "Use a matching horizon for leverage change."
+        },
+        {
+          "name": "quality_spread",
+          "kind": "spread",
+          "input_fields": ["cashflow_op", "debt_lt"],
+          "lookback_days": null,
+          "constant": null,
+          "rationale": "Translate quality deterioration into a simple spread form."
+        }
+      ],
+      "normalization_plan": [
+        {
+          "kind": "cross_sectional_rank",
+          "target": "final_expression",
+          "rationale": "Final rank reduces outlier domination and makes cross-sectional use safer."
+        }
+      ],
+      "risk_control_plan": [
+        {
+          "kind": "outer_rank",
+          "parameters": {},
+          "rationale": "Explicit final ranking is mandatory for conservative first-pass signals."
+        },
+        {
+          "kind": "denominator_floor",
+          "parameters": {"epsilon": 0.01},
+          "rationale": "Avoid unstable division denominators."
+        }
+      ],
+      "operator_policy": {
+        "allowed_operators": ["rank", "divide", "subtract", "add", "abs", "ts_delta"],
+        "forbidden_operators": ["ts_sum", "group_backfill", "trade_when"],
+        "max_operator_count": 6,
+        "max_nesting_depth": 4,
+        "require_explicit_lookbacks": true,
+        "require_outer_normalization": true
+      },
+      "skeleton_templates": [
+        {
+          "template_id": "skel.rank_spread.001",
+          "name": "ranked_quality_spread",
+          "template": "rank(divide(subtract(FIELD_A, FIELD_B), add(abs(FIELD_B), CONST_EPS)))",
+          "slot_names": ["FIELD_A", "FIELD_B", "CONST_EPS"],
+          "rationale": "Safe normalized spread around two key fields."
+        }
+      ],
+      "disallowed_patterns": ["short_delay_on_slow_fundamentals", "missing_outer_rank"],
+      "target_expression_count": 4,
+      "notes": "Golden sample blueprint for contract validation."
+    },
+    "design_notes": [
+      "Keep final cross-sectional normalization mandatory."
+    ]
+  },
+  "notes": [
+    "Golden sample for blueprint builder contract validation."
+  ]
+}
