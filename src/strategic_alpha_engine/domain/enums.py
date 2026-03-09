@@ -104,3 +104,16 @@ class CandidateGenerationMethod(str, Enum):
     SKELETON_FILL = "skeleton_fill"
     LLM_SYNTHESIS = "llm_synthesis"
     MANUAL = "manual"
+
+
+class OperatorCategory(str, Enum):
+    ARITHMETIC = "arithmetic"
+    CROSS_SECTIONAL = "cross_sectional"
+    TIME_SERIES = "time_series"
+    CONTROL_FLOW = "control_flow"
+
+
+class OutlierRiskLevel(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
