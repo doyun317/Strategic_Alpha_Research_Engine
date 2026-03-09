@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import Field, field_validator, model_validator
 
 from strategic_alpha_engine.domain.base import EngineModel
-from strategic_alpha_engine.domain.common import IDENTIFIER_PATTERN
+from strategic_alpha_engine.domain.common import IDENTIFIER_PATTERN, ensure_unique_sequence
 from strategic_alpha_engine.domain.enums import (
     CandidateLifecycleStage,
     ResearchFamily,
@@ -140,6 +140,33 @@ class FamilyLearnerSummary(EngineModel):
     @classmethod
     def validate_updated_at(cls, value: datetime) -> datetime:
         return _require_timezone_aware(value, "updated_at")
+
+
+class AgendaQueueRecord(EngineModel):
+    queue_record_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    iteration_index: int = Field(ge=1)
+    rank: int = Field(ge=1)
+    agenda_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    family: ResearchFamily
+    agenda_name: str = Field(min_length=4, max_length=140)
+    agenda_status: str = Field(pattern=r"^(active|paused|backlog|completed)$")
+    base_priority: float = Field(ge=0.0, le=1.0)
+    family_score: float = Field(ge=0.0, le=1.0)
+    adjusted_priority: float = Field(ge=0.0, le=1.0)
+    selected_for_execution: bool = False
+    reasons: list[str] = Field(default_factory=list, max_length=16)
+    recorded_at: datetime
+
+    @field_validator("reasons")
+    @classmethod
+    def validate_reasons(cls, value: list[str]) -> list[str]:
+        return ensure_unique_sequence(value, "reasons")
+
+    @field_validator("recorded_at")
+    @classmethod
+    def validate_recorded_at(cls, value: datetime) -> datetime:
+        return _require_timezone_aware(value, "recorded_at")
 
 
 class ValidationBacklogEntry(EngineModel):

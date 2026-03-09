@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from strategic_alpha_engine.application.contracts import (
+    AgendaQueueRecord,
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
@@ -31,6 +32,11 @@ class LocalFileStateLedger:
         self._append_jsonl(path, [record.model_dump(mode="json") for record in records])
         return path
 
+    def append_agenda_queue_records(self, records: list[AgendaQueueRecord]) -> Path:
+        path = self.state_directory() / "agenda_queue.jsonl"
+        self._append_jsonl(path, [record.model_dump(mode="json") for record in records])
+        return path
+
     def write_family_stats(self, snapshots: list[FamilyStatsSnapshot]) -> Path:
         path = self.state_directory() / "family_stats.json"
         payload = [snapshot.model_dump(mode="json") for snapshot in snapshots]
@@ -55,6 +61,10 @@ class LocalFileStateLedger:
     def load_run_state_records(self) -> list[RunStateRecord]:
         path = self.state_directory() / "run_states.jsonl"
         return [RunStateRecord(**payload) for payload in self._read_jsonl(path)]
+
+    def load_agenda_queue_records(self) -> list[AgendaQueueRecord]:
+        path = self.state_directory() / "agenda_queue.jsonl"
+        return [AgendaQueueRecord(**payload) for payload in self._read_jsonl(path)]
 
     def load_family_stats(self) -> list[FamilyStatsSnapshot]:
         path = self.state_directory() / "family_stats.json"

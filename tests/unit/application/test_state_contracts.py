@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from strategic_alpha_engine.application.contracts import (
+    AgendaQueueRecord,
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
@@ -112,3 +113,24 @@ def test_family_learner_summary_accepts_rate_fields():
     )
 
     assert summary.stage_a_pass_rate == 0.75
+
+
+def test_agenda_queue_record_accepts_timezone_aware_timestamp():
+    record = AgendaQueueRecord(
+        queue_record_id="queue.research_loop.001.001",
+        source_run_id="research_loop.quality_deterioration.001",
+        iteration_index=1,
+        rank=1,
+        agenda_id="agenda.quality_deterioration.001",
+        family="quality_deterioration",
+        agenda_name="Quality deterioration queue",
+        agenda_status="active",
+        base_priority=0.8,
+        family_score=0.7,
+        adjusted_priority=0.74,
+        selected_for_execution=True,
+        reasons=["base_priority=0.8", "family_score=0.7"],
+        recorded_at=datetime(2026, 1, 15, 15, 0, tzinfo=timezone.utc),
+    )
+
+    assert record.selected_for_execution is True

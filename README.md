@@ -119,6 +119,16 @@ python -m strategic_alpha_engine policy \
   --agenda-in tmp/agenda_momentum.json
 ```
 
+Run a bounded research loop across prioritized agendas:
+
+```bash
+# without --agenda-in, the command uses the built-in sample agenda pool
+python -m strategic_alpha_engine research-loop --artifacts-dir artifacts --iterations 2
+
+# inspect queue state and latest loop recommendation snapshot
+python -m strategic_alpha_engine status --artifacts-dir artifacts
+```
+
 ## Schema Commands
 
 Print JSON schema:
@@ -165,6 +175,7 @@ Current implementation includes:
 - Stage A evaluation records and rule-based promotion decisions after simulation
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
+- local agenda queue ledger and bounded `research-loop` execution mode
 - artifact persistence for `evaluations.jsonl` and `promotion.jsonl`
 - learner-ready family stats and `family_learner_summaries.json`
 - heuristic family policy recommendations and agenda weighting via `policy`

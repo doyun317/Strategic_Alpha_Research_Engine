@@ -5,6 +5,7 @@ from strategic_alpha_engine.domain.examples import (
     build_sample_hypothesis_spec,
     build_sample_promotion_decision,
     build_sample_research_agenda,
+    build_sample_research_agenda_pool,
     build_sample_simulation_request,
     build_sample_simulation_run,
     build_sample_signal_blueprint,
@@ -22,6 +23,7 @@ from strategic_alpha_engine.domain.metadata_catalog import (
 from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.search_policy import (
+    AgendaSelection,
     AgendaPriorityRecommendation,
     FamilyPolicyRecommendation,
 )
@@ -31,6 +33,7 @@ from strategic_alpha_engine.domain.static_validation import StaticValidationIssu
 
 __all__ = [
     "AgendaPriorityRecommendation",
+    "AgendaSelection",
     "CritiqueIssue",
     "CritiqueReport",
     "EvaluationRecord",
@@ -54,6 +57,7 @@ __all__ = [
     "build_sample_hypothesis_spec",
     "build_sample_promotion_decision",
     "build_sample_research_agenda",
+    "build_sample_research_agenda_pool",
     "build_sample_simulation_request",
     "build_sample_simulation_run",
     "build_sample_signal_blueprint",

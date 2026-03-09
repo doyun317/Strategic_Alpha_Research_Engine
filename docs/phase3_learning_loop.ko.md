@@ -102,7 +102,8 @@
 
 - `3-1 family stats ledger`: 완료
 - `3-2 search policy learner`: 완료
-- 다음 작업: `3-3 agenda manager and research-loop`
+- `3-3 agenda manager and research-loop`: 완료
+- Phase 3 구현 범위 완료
 
 ## 6. 구현 원칙
 

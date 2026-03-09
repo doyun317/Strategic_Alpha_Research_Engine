@@ -1,3 +1,4 @@
+from strategic_alpha_engine.application.services.agenda_manager import HeuristicResearchAgendaManager
 from strategic_alpha_engine.application.services.interfaces import (
     AgendaPrioritizer,
     ArtifactLedger,
@@ -7,6 +8,7 @@ from strategic_alpha_engine.application.services.interfaces import (
     FamilyAnalyticsBuilder,
     HypothesisPlanner,
     PromotionDecider,
+    ResearchAgendaManager,
     SearchPolicyLearner,
     StateLedger,
     StageAEvaluator,
@@ -35,6 +37,7 @@ from strategic_alpha_engine.application.services.static_planners import (
 )
 
 __all__ = [
+    "HeuristicResearchAgendaManager",
     "ArtifactLedger",
     "AgendaPrioritizer",
     "BrainSimulationClient",
@@ -48,6 +51,7 @@ __all__ = [
     "LocalArtifactFamilyAnalyticsBuilder",
     "MetadataBackedStaticValidator",
     "PromotionDecider",
+    "ResearchAgendaManager",
     "SearchPolicyLearner",
     "RuleBasedStrategicCritic",
     "RuleBasedStageAEvaluator",

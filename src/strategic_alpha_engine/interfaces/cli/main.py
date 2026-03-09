@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from strategic_alpha_engine.application.contracts import (
+    AgendaQueueRecord,
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
@@ -15,6 +16,7 @@ from strategic_alpha_engine.application.contracts import (
 from strategic_alpha_engine.application.services import (
     FamilyWeightedAgendaPrioritizer,
     FamilyAnalyticsBundle,
+    HeuristicResearchAgendaManager,
     HeuristicSearchPolicyLearner,
     LocalArtifactFamilyAnalyticsBuilder,
     MetadataBackedStaticValidator,
@@ -45,6 +47,7 @@ from strategic_alpha_engine.domain import (
     build_sample_expression_candidate,
     build_sample_hypothesis_spec,
     build_sample_research_agenda,
+    build_sample_research_agenda_pool,
     build_sample_signal_blueprint,
 )
 from strategic_alpha_engine.domain.enums import (
@@ -86,6 +89,13 @@ def _load_agendas(paths: list[str] | None) -> list[ResearchAgenda]:
     if not paths:
         return []
     return [_load_agenda(path) for path in paths]
+
+
+def _load_seed_agendas(paths: list[str] | None) -> list[ResearchAgenda]:
+    agendas = _load_agendas(paths)
+    if agendas:
+        return agendas
+    return build_sample_research_agenda_pool()
 
 
 def _load_hypothesis(path: str | None) -> HypothesisSpec:
@@ -221,6 +231,21 @@ def _build_agenda_priority_recommendations(
     )
 
 
+def _build_agenda_selection(
+    agendas: list[ResearchAgenda],
+    family_recommendations,
+    *,
+    excluded_agenda_ids: set[str] | None = None,
+):
+    return HeuristicResearchAgendaManager(
+        agenda_prioritizer=FamilyWeightedAgendaPrioritizer(),
+    ).select_next(
+        agendas,
+        family_recommendations,
+        excluded_agenda_ids=excluded_agenda_ids,
+    )
+
+
 def _build_candidate_stage_records(
     *,
     run_id: str,
@@ -297,6 +322,114 @@ def _build_stage_counts(candidate_stage_records: list[CandidateStageRecord]) -> 
     return counts
 
 
+def _build_simulation_status_counts(simulation_result) -> dict[str, int]:
+    counts = {
+        status.value: 0
+        for status in (
+            SimulationStatus.SUCCEEDED,
+            SimulationStatus.FAILED,
+            SimulationStatus.TIMED_OUT,
+        )
+    }
+    for execution in simulation_result.executions:
+        counts[execution.result.status] += 1
+    return counts
+
+
+def _resolve_family_analytics(
+    root_dir: str | Path,
+    state_ledger: LocalFileStateLedger,
+) -> tuple[list[FamilyStatsSnapshot], list[FamilyLearnerSummary]]:
+    candidate_stage_records = state_ledger.load_candidate_stage_records()
+    family_stats = state_ledger.load_family_stats()
+    learner_summaries = state_ledger.load_family_learner_summaries()
+    if family_stats and learner_summaries:
+        return family_stats, learner_summaries
+    analytics_bundle = _build_family_analytics_bundle(root_dir, candidate_stage_records)
+    if not family_stats:
+        family_stats = analytics_bundle.family_stats
+    if not learner_summaries:
+        learner_summaries = analytics_bundle.learner_summaries
+    return family_stats, learner_summaries
+
+
+def _build_agenda_queue_records(
+    *,
+    run_id: str,
+    iteration_index: int,
+    agendas: list[ResearchAgenda],
+    agenda_recommendations,
+    selected_agenda_id: str | None,
+    recorded_at: datetime,
+) -> list[AgendaQueueRecord]:
+    agendas_by_id = {
+        agenda.agenda_id: agenda
+        for agenda in agendas
+    }
+    records: list[AgendaQueueRecord] = []
+    for rank, recommendation in enumerate(agenda_recommendations, start=1):
+        agenda = agendas_by_id[recommendation.agenda_id]
+        records.append(
+            AgendaQueueRecord(
+                queue_record_id=f"queue.{run_id}.{rank:03d}",
+                source_run_id=run_id,
+                iteration_index=iteration_index,
+                rank=rank,
+                agenda_id=agenda.agenda_id,
+                family=agenda.family,
+                agenda_name=agenda.name,
+                agenda_status=agenda.status,
+                base_priority=recommendation.base_priority,
+                family_score=recommendation.family_score,
+                adjusted_priority=recommendation.adjusted_priority,
+                selected_for_execution=agenda.agenda_id == selected_agenda_id,
+                reasons=recommendation.reasons,
+                recorded_at=recorded_at,
+            )
+        )
+    return records
+
+
+def _build_agenda_queue_summary(agenda_queue_records: list[AgendaQueueRecord]) -> dict:
+    if not agenda_queue_records:
+        return {
+            "latest_source_run_id": None,
+            "iteration_index": None,
+            "selected_agenda_id": None,
+            "total_entries": 0,
+            "entries": [],
+        }
+
+    latest_record_by_run_id: dict[str, datetime] = {}
+    for record in agenda_queue_records:
+        current_latest = latest_record_by_run_id.get(record.source_run_id)
+        if current_latest is None or record.recorded_at > current_latest:
+            latest_record_by_run_id[record.source_run_id] = record.recorded_at
+
+    latest_source_run_id = max(
+        latest_record_by_run_id,
+        key=lambda run_id: latest_record_by_run_id[run_id],
+    )
+    latest_snapshot = [
+        record
+        for record in agenda_queue_records
+        if record.source_run_id == latest_source_run_id
+    ]
+    latest_snapshot.sort(key=lambda record: record.rank)
+    selected_record = next(
+        (record for record in latest_snapshot if record.selected_for_execution),
+        None,
+    )
+
+    return {
+        "latest_source_run_id": latest_source_run_id,
+        "iteration_index": latest_snapshot[0].iteration_index if latest_snapshot else None,
+        "selected_agenda_id": selected_record.agenda_id if selected_record is not None else None,
+        "total_entries": len(latest_snapshot),
+        "entries": [record.model_dump(mode="json") for record in latest_snapshot[:5]],
+    }
+
+
 def _load_run_context(root_dir: Path, run_id: str) -> dict[str, dict | None]:
     run_dir = root_dir / "runs" / run_id
     context: dict[str, dict | None] = {}
@@ -311,6 +444,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
     state_ledger = LocalFileStateLedger(artifacts_root)
     candidate_stage_records = state_ledger.load_candidate_stage_records()
     run_state_records = state_ledger.load_run_state_records()
+    agenda_queue_records = state_ledger.load_agenda_queue_records()
     family_stats = state_ledger.load_family_stats()
     learner_summaries = state_ledger.load_family_learner_summaries()
     validation_backlog_entries = state_ledger.load_validation_backlog_entries()
@@ -425,6 +559,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
             "total_entries": len(validation_backlog_entries),
             "counts_by_status": dict(sorted(backlog_counts.items())),
         },
+        "agenda_queue": _build_agenda_queue_summary(agenda_queue_records),
         "candidate_stage_counts": _build_stage_counts(candidate_stage_records),
         "recent_candidate_flow_24h": {
             "cutoff": recent_24h_cutoff.isoformat(),
@@ -439,6 +574,141 @@ def _build_status_summary(root_dir: str | Path) -> dict:
             "recent_run_ids": [record.run_id for record in latest_run_records[:5]],
         },
     }
+
+
+def _execute_local_research_run(
+    *,
+    run_id: str,
+    run_kind: RunKind,
+    settings: RuntimeSettings,
+    state_ledger: LocalFileStateLedger,
+    artifacts_dir: str,
+    agenda: ResearchAgenda | None,
+    hypothesis: HypothesisSpec,
+    blueprint: SignalBlueprint,
+    fake_terminal_status: str,
+    max_polls: int | None,
+) -> dict:
+    started_at = _utc_now()
+    state_ledger.append_run_state_records(
+        [
+            RunStateRecord(
+                run_id=run_id,
+                run_kind=run_kind,
+                status=RunLifecycleStatus.STARTED,
+                started_at=started_at,
+            )
+        ]
+    )
+
+    try:
+        synthesize_result = _build_synthesize_workflow().run(hypothesis=hypothesis, blueprint=blueprint)
+        policy = _build_simulation_policy(settings, hypothesis)
+        resolved_max_polls = max_polls or (settings.brain.max_polls if settings.brain else 3)
+        simulation_result = SimulationOrchestratorWorkflow(
+            brain_client=FakeBrainSimulationClient(
+                terminal_status=SimulationStatus(fake_terminal_status),
+                base_time=started_at - timedelta(minutes=5),
+            ),
+            max_polls=resolved_max_polls,
+        ).run(
+            synthesize_result=synthesize_result,
+            policy=policy,
+        )
+        stage_a_result = _build_stage_a_workflow().run(
+            simulation_result,
+            source_run_id=run_id,
+        )
+
+        artifact_ledger = LocalFileArtifactLedger(artifacts_dir)
+        artifact_run_dir = artifact_ledger.write_synthesize_result(
+            run_id,
+            synthesize_result,
+            agenda=agenda,
+        )
+        artifact_ledger.write_simulation_result(run_id, simulation_result)
+        artifact_ledger.write_stage_a_result(run_id, stage_a_result)
+
+        candidate_stage_records = _build_candidate_stage_records(
+            run_id=run_id,
+            hypothesis=hypothesis,
+            synthesize_result=synthesize_result,
+            stage_a_result=stage_a_result,
+            default_recorded_at=started_at,
+        )
+        state_ledger.append_candidate_stage_records(candidate_stage_records)
+        all_stage_records = state_ledger.load_candidate_stage_records()
+        analytics_bundle = _build_family_analytics_bundle(artifacts_dir, all_stage_records)
+        family_stats = analytics_bundle.family_stats
+        learner_summaries = analytics_bundle.learner_summaries
+        state_ledger.write_family_stats(family_stats)
+        state_ledger.write_family_learner_summaries(learner_summaries)
+
+        completed_at = _utc_now()
+        state_ledger.append_run_state_records(
+            [
+                RunStateRecord(
+                    run_id=run_id,
+                    run_kind=run_kind,
+                    status=RunLifecycleStatus.COMPLETED,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    candidate_count=len(synthesize_result.evaluations),
+                    accepted_candidate_count=len(synthesize_result.accepted_candidate_ids),
+                    simulated_candidate_count=len(simulation_result.simulated_candidate_ids),
+                )
+            ]
+        )
+
+        family_snapshot = next(
+            (
+                snapshot.model_dump(mode="json")
+                for snapshot in family_stats
+                if snapshot.family == hypothesis.family
+            ),
+            None,
+        )
+        learner_summary = next(
+            (
+                summary.model_dump(mode="json")
+                for summary in learner_summaries
+                if summary.family == hypothesis.family
+            ),
+            None,
+        )
+        return {
+            "run_id": run_id,
+            "family": hypothesis.family,
+            "agenda_id": agenda.agenda_id if agenda is not None else hypothesis.agenda_id,
+            "hypothesis_id": hypothesis.hypothesis_id,
+            "blueprint_id": blueprint.blueprint_id,
+            "policy": policy.model_dump(mode="json"),
+            "accepted_candidate_ids": synthesize_result.accepted_candidate_ids,
+            "rejected_candidate_ids": synthesize_result.rejected_candidate_ids,
+            "simulated_candidate_ids": simulation_result.simulated_candidate_ids,
+            "promoted_candidate_ids": stage_a_result.promoted_candidate_ids,
+            "stage_a_rejected_candidate_ids": stage_a_result.rejected_candidate_ids,
+            "skipped_candidate_ids": simulation_result.skipped_candidate_ids,
+            "simulation_status_counts": _build_simulation_status_counts(simulation_result),
+            "artifact_run_dir": str(artifact_run_dir),
+            "state_dir": str(state_ledger.state_directory()),
+            "family_stats": family_snapshot,
+            "family_learner_summary": learner_summary,
+        }
+    except Exception as exc:
+        state_ledger.append_run_state_records(
+            [
+                RunStateRecord(
+                    run_id=run_id,
+                    run_kind=run_kind,
+                    status=RunLifecycleStatus.FAILED,
+                    started_at=started_at,
+                    completed_at=_utc_now(),
+                    error_message=str(exc)[:300],
+                )
+            ]
+        )
+        raise
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -505,6 +775,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     simulate_parser.add_argument("--max-polls", type=int, default=None)
     simulate_parser.add_argument("--out", default=None)
+
+    research_loop_parser = subparsers.add_parser(
+        "research-loop",
+        help="Run a bounded research loop over prioritized agendas and persist local ledgers",
+    )
+    research_loop_parser.add_argument("--settings-dir", default=None)
+    research_loop_parser.add_argument("--artifacts-dir", default="artifacts")
+    research_loop_parser.add_argument("--agenda-in", action="append", default=None)
+    research_loop_parser.add_argument("--iterations", type=int, default=1)
+    research_loop_parser.add_argument(
+        "--fake-terminal-status",
+        choices=[
+            SimulationStatus.SUCCEEDED.value,
+            SimulationStatus.FAILED.value,
+            SimulationStatus.TIMED_OUT.value,
+        ],
+        default=SimulationStatus.SUCCEEDED.value,
+    )
+    research_loop_parser.add_argument("--max-polls", type=int, default=None)
+    research_loop_parser.add_argument("--out", default=None)
 
     status_parser = subparsers.add_parser("status", help="Summarize local artifact and state ledgers")
     status_parser.add_argument("--artifacts-dir", default="artifacts")
@@ -612,140 +902,106 @@ def main(argv: list[str] | None = None) -> int:
             blueprint_input_path=args.blueprint_in,
         )
         run_id = args.run_id or _build_run_id("simulate", hypothesis.family)
-        started_at = _utc_now()
         state_ledger = LocalFileStateLedger(args.artifacts_dir)
-        state_ledger.append_run_state_records(
-            [
-                RunStateRecord(
-                    run_id=run_id,
-                    run_kind=RunKind.SIMULATE,
-                    status=RunLifecycleStatus.STARTED,
-                    started_at=started_at,
-                )
-            ]
+        payload = _execute_local_research_run(
+            run_id=run_id,
+            run_kind=RunKind.SIMULATE,
+            settings=settings,
+            state_ledger=state_ledger,
+            artifacts_dir=args.artifacts_dir,
+            agenda=agenda,
+            hypothesis=hypothesis,
+            blueprint=blueprint,
+            fake_terminal_status=args.fake_terminal_status,
+            max_polls=args.max_polls,
         )
+        _write_output(payload, args.out)
+        return 0
 
-        try:
-            synthesize_result = _build_synthesize_workflow().run(hypothesis=hypothesis, blueprint=blueprint)
-            policy = _build_simulation_policy(settings, hypothesis)
-            max_polls = args.max_polls or (settings.brain.max_polls if settings.brain else 3)
-            simulation_result = SimulationOrchestratorWorkflow(
-                brain_client=FakeBrainSimulationClient(
-                    terminal_status=SimulationStatus(args.fake_terminal_status),
-                    base_time=started_at - timedelta(minutes=5),
-                ),
-                max_polls=max_polls,
-            ).run(
-                synthesize_result=synthesize_result,
-                policy=policy,
-            )
-            stage_a_result = _build_stage_a_workflow().run(
-                simulation_result,
-                source_run_id=run_id,
-            )
+    if args.command == "research-loop":
+        if args.iterations < 1:
+            parser.exit(status=2, message="--iterations must be at least 1\n")
 
-            artifact_ledger = LocalFileArtifactLedger(args.artifacts_dir)
-            artifact_run_dir = artifact_ledger.write_synthesize_result(
-                run_id,
-                synthesize_result,
-                agenda=agenda,
-            )
-            artifact_ledger.write_simulation_result(run_id, simulation_result)
-            artifact_ledger.write_stage_a_result(run_id, stage_a_result)
+        settings = load_runtime_settings(settings_dir=args.settings_dir)
+        seed_agendas = _load_seed_agendas(args.agenda_in)
+        state_ledger = LocalFileStateLedger(args.artifacts_dir)
+        selected_agenda_ids: list[str] = []
+        selected_agenda_id_set: set[str] = set()
+        iteration_runs: list[dict] = []
+        stopped_reason = "completed_requested_iterations"
 
-            candidate_stage_records = _build_candidate_stage_records(
-                run_id=run_id,
-                hypothesis=hypothesis,
-                synthesize_result=synthesize_result,
-                stage_a_result=stage_a_result,
-                default_recorded_at=started_at,
+        for iteration_index in range(1, args.iterations + 1):
+            _, learner_summaries = _resolve_family_analytics(args.artifacts_dir, state_ledger)
+            family_recommendations = _build_family_policy_recommendations(learner_summaries)
+            selection = _build_agenda_selection(
+                seed_agendas,
+                family_recommendations,
+                excluded_agenda_ids=selected_agenda_id_set,
             )
-            state_ledger.append_candidate_stage_records(candidate_stage_records)
-            all_stage_records = state_ledger.load_candidate_stage_records()
-            analytics_bundle = _build_family_analytics_bundle(args.artifacts_dir, all_stage_records)
-            family_stats = analytics_bundle.family_stats
-            learner_summaries = analytics_bundle.learner_summaries
-            state_ledger.write_family_stats(family_stats)
-            state_ledger.write_family_learner_summaries(learner_summaries)
+            selected_agenda = selection.selected_agenda
+            if selected_agenda is None:
+                stopped_reason = "agenda_pool_exhausted"
+                break
 
-            completed_at = _utc_now()
-            state_ledger.append_run_state_records(
-                [
-                    RunStateRecord(
-                        run_id=run_id,
-                        run_kind=RunKind.SIMULATE,
-                        status=RunLifecycleStatus.COMPLETED,
-                        started_at=started_at,
-                        completed_at=completed_at,
-                        candidate_count=len(synthesize_result.evaluations),
-                        accepted_candidate_count=len(synthesize_result.accepted_candidate_ids),
-                        simulated_candidate_count=len(simulation_result.simulated_candidate_ids),
-                    )
-                ]
-            )
-
-            simulation_status_counts = {
-                status.value: 0
-                for status in (
-                    SimulationStatus.SUCCEEDED,
-                    SimulationStatus.FAILED,
-                    SimulationStatus.TIMED_OUT,
+            run_id = _build_run_id("research_loop", selected_agenda.family)
+            queue_recorded_at = _utc_now()
+            state_ledger.append_agenda_queue_records(
+                _build_agenda_queue_records(
+                    run_id=run_id,
+                    iteration_index=iteration_index,
+                    agendas=seed_agendas,
+                    agenda_recommendations=selection.agenda_recommendations,
+                    selected_agenda_id=selected_agenda.agenda_id,
+                    recorded_at=queue_recorded_at,
                 )
-            }
-            for execution in simulation_result.executions:
-                simulation_status_counts[execution.result.status] += 1
+            )
 
-            family_snapshot = next(
-                (
-                    snapshot.model_dump(mode="json")
-                    for snapshot in family_stats
-                    if snapshot.family == hypothesis.family
-                ),
-                None,
+            plan_result = _build_plan_workflow().run(selected_agenda)
+            run_payload = _execute_local_research_run(
+                run_id=run_id,
+                run_kind=RunKind.RESEARCH_LOOP,
+                settings=settings,
+                state_ledger=state_ledger,
+                artifacts_dir=args.artifacts_dir,
+                agenda=plan_result.agenda,
+                hypothesis=plan_result.hypothesis,
+                blueprint=plan_result.blueprint,
+                fake_terminal_status=args.fake_terminal_status,
+                max_polls=args.max_polls,
             )
-            learner_summary = next(
-                (
-                    summary.model_dump(mode="json")
-                    for summary in learner_summaries
-                    if summary.family == hypothesis.family
-                ),
-                None,
+            selected_agenda_ids.append(selected_agenda.agenda_id)
+            selected_agenda_id_set.add(selected_agenda.agenda_id)
+            iteration_runs.append(
+                {
+                    "iteration_index": iteration_index,
+                    "run_id": run_payload["run_id"],
+                    "selected_agenda_id": selected_agenda.agenda_id,
+                    "selected_family": selected_agenda.family,
+                    "accepted_candidate_ids": run_payload["accepted_candidate_ids"],
+                    "promoted_candidate_ids": run_payload["promoted_candidate_ids"],
+                    "simulation_status_counts": run_payload["simulation_status_counts"],
+                    "top_agenda_ids": [
+                        recommendation.agenda_id
+                        for recommendation in selection.agenda_recommendations[:3]
+                    ],
+                    "top_family_recommendations": [
+                        recommendation.family
+                        for recommendation in family_recommendations[:3]
+                    ],
+                }
             )
-            payload = {
-                "run_id": run_id,
-                "family": hypothesis.family,
-                "agenda_id": agenda.agenda_id if agenda is not None else hypothesis.agenda_id,
-                "hypothesis_id": hypothesis.hypothesis_id,
-                "blueprint_id": blueprint.blueprint_id,
-                "policy": policy.model_dump(mode="json"),
-                "accepted_candidate_ids": synthesize_result.accepted_candidate_ids,
-                "rejected_candidate_ids": synthesize_result.rejected_candidate_ids,
-                "simulated_candidate_ids": simulation_result.simulated_candidate_ids,
-                "promoted_candidate_ids": stage_a_result.promoted_candidate_ids,
-                "stage_a_rejected_candidate_ids": stage_a_result.rejected_candidate_ids,
-                "skipped_candidate_ids": simulation_result.skipped_candidate_ids,
-                "simulation_status_counts": simulation_status_counts,
-                "artifact_run_dir": str(artifact_run_dir),
-                "state_dir": str(state_ledger.state_directory()),
-                "family_stats": family_snapshot,
-                "family_learner_summary": learner_summary,
-            }
-            _write_output(payload, args.out)
-            return 0
-        except Exception as exc:
-            state_ledger.append_run_state_records(
-                [
-                    RunStateRecord(
-                        run_id=run_id,
-                        run_kind=RunKind.SIMULATE,
-                        status=RunLifecycleStatus.FAILED,
-                        started_at=started_at,
-                        completed_at=_utc_now(),
-                        error_message=str(exc)[:300],
-                    )
-                ]
-            )
-            raise
+
+        payload = {
+            "requested_iterations": args.iterations,
+            "completed_iterations": len(iteration_runs),
+            "stopped_reason": stopped_reason,
+            "seed_agenda_ids": [agenda.agenda_id for agenda in seed_agendas],
+            "executed_agenda_ids": selected_agenda_ids,
+            "state_dir": str(state_ledger.state_directory()),
+            "iteration_runs": iteration_runs,
+        }
+        _write_output(payload, args.out)
+        return 0
 
     if args.command == "status":
         _write_output(_build_status_summary(args.artifacts_dir), args.out)

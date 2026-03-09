@@ -15,6 +15,7 @@ from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationSubmission,
 )
 from strategic_alpha_engine.application.contracts.state import (
+    AgendaQueueRecord,
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
@@ -28,6 +29,7 @@ from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.search_policy import (
+    AgendaSelection,
     AgendaPriorityRecommendation,
     FamilyPolicyRecommendation,
 )
@@ -112,6 +114,16 @@ class AgendaPrioritizer(Protocol):
     ) -> list[AgendaPriorityRecommendation]: ...
 
 
+class ResearchAgendaManager(Protocol):
+    def select_next(
+        self,
+        agendas: list[ResearchAgenda],
+        family_recommendations: list[FamilyPolicyRecommendation],
+        *,
+        excluded_agenda_ids: set[str] | None = None,
+    ) -> AgendaSelection: ...
+
+
 class ArtifactLedger(Protocol):
     def write_context(
         self,
@@ -152,6 +164,8 @@ class StateLedger(Protocol):
 
     def append_run_state_records(self, records: list[RunStateRecord]) -> Path: ...
 
+    def append_agenda_queue_records(self, records: list[AgendaQueueRecord]) -> Path: ...
+
     def write_family_stats(self, snapshots: list[FamilyStatsSnapshot]) -> Path: ...
 
     def write_family_learner_summaries(self, summaries: list[FamilyLearnerSummary]) -> Path: ...
@@ -161,6 +175,8 @@ class StateLedger(Protocol):
     def load_candidate_stage_records(self) -> list[CandidateStageRecord]: ...
 
     def load_run_state_records(self) -> list[RunStateRecord]: ...
+
+    def load_agenda_queue_records(self) -> list[AgendaQueueRecord]: ...
 
     def load_family_stats(self) -> list[FamilyStatsSnapshot]: ...
 
