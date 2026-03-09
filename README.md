@@ -63,6 +63,14 @@ python -m strategic_alpha_engine config
 python -m strategic_alpha_engine config --require-llm
 ```
 
+Inspect seeded metadata catalog:
+
+```bash
+python -m strategic_alpha_engine catalog --view summary
+python -m strategic_alpha_engine catalog --view fields --field-class fundamental --horizon medium
+python -m strategic_alpha_engine catalog --view operators
+```
+
 ## Schema Commands
 
 Print JSON schema:

@@ -29,8 +29,8 @@ git checkout -b phase2/2-1-config-and-runtime-model
 
 | 단계 | 브랜치명 | 목표 | 완료 기준 | 상태 |
 | --- | --- | --- | --- | --- |
-| 2-1 | `phase2/2-1-config-and-runtime-model` | runtime settings 모델과 env 로딩 구조 확정 | 설정 로딩, validation, CLI 확인, 테스트 통과 | `in_progress` |
-| 2-2 | `phase2/2-2-metadata-catalog` | field/operator metadata catalog 추가 | catalog load 가능, 조회 테스트 통과 | `planned` |
+| 2-1 | `phase2/2-1-config-and-runtime-model` | runtime settings 모델과 env 로딩 구조 확정 | 설정 로딩, validation, CLI 확인, 테스트 통과 | `completed` |
+| 2-2 | `phase2/2-2-metadata-catalog` | field/operator metadata catalog 추가 | catalog load 가능, 조회 테스트 통과 | `in_progress` |
 | 2-3 | `phase2/2-3-static-validator` | critic 이전 정적 validator 추가 | invalid expression 차단 테스트 통과 | `planned` |
 | 2-4 | `phase2/2-4-simulation-domain` | `SimulationRequest`, `SimulationRun` 도메인 추가 | immutable request/domain 테스트 통과 | `planned` |
 | 2-5 | `phase2/2-5-brain-client-contract` | Brain adapter 인터페이스와 fake client 확정 | fake client 기반 테스트 가능 | `planned` |
@@ -49,39 +49,40 @@ git checkout -b phase2/2-1-config-and-runtime-model
 - 문서 또는 예제 env가 필요한 변경이면 같이 반영했는가
 - 다음 브랜치가 이 브랜치의 결과물을 안정적으로 재사용할 수 있는가
 
-## 5. 현재 작업 범위: 2-1
+## 5. 현재 작업 범위: 2-2
 
 이번 브랜치에서 처리할 내용:
 
-- 실제 `config` 모듈 추가
-- `default.env`, `local.env`, `llm.env`, `brain.env` 로딩 순서 확정
-- process env override 지원
-- runtime settings validation
-- CLI에서 현재 설정을 JSON으로 출력하는 `config` 명령 추가
+- field metadata 모델 추가
+- operator metadata 모델 추가
+- seed catalog loader 추가
+- catalog filtering/query API 추가
+- CLI에서 metadata summary / field excerpt / operator list 확인 가능하게 만들기
 - 관련 테스트 추가
 
 이번 브랜치에서 일부러 하지 않는 내용:
 
+- static validator 규칙 집행
+- simulation domain
 - Brain HTTP 연동
-- simulation orchestration
 - persistence
 - promotion pipeline
 
 ## 6. 권장 커밋 단위
 
-`2-1`에서는 아래 정도로 나누는 것이 적절하다.
+`2-2`에서는 아래 정도로 나누는 것이 적절하다.
 
-1. 계획 문서 추가
-2. settings 모델과 env loader 추가
-3. CLI `config` 명령 연결
-4. 예제 env / README 업데이트
+1. metadata domain 모델 추가
+2. seed catalog loader 추가
+3. CLI `catalog` 명령 연결
+4. README / 계획 문서 상태 업데이트
 5. 테스트 추가 및 정리
 
 ## 7. 다음 단계 진입 조건
 
-`2-2 metadata catalog`로 넘어가기 전에 아래를 만족해야 한다.
+`2-3 static validator`로 넘어가기 전에 아래를 만족해야 한다.
 
 - `pytest` 통과
-- `python -m strategic_alpha_engine config` 정상 동작
-- `llm.env`, `brain.env`가 없을 때도 기본 설정 로딩 가능
-- `--require-llm`, `--require-brain` 옵션이 제대로 실패/성공한다
+- `python -m strategic_alpha_engine catalog --view summary` 정상 동작
+- field class / horizon 기준 excerpt filtering 가능
+- field/operator lookup이 seed catalog 기준으로 안정적으로 동작한다
