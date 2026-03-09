@@ -94,7 +94,8 @@
 현재 진행 상태:
 
 - `4-1 validation domain and CLI`: 완료
-- 다음 작업: `4-2 multi-period validation runner`
+- `4-2 multi-period validation runner`: 완료
+- 다음 작업: `4-3 robust candidate promotion`
 
 ## 6. 구현 원칙
 
