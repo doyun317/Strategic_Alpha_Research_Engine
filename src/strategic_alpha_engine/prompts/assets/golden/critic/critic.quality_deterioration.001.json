@@ -1,0 +1,168 @@
+{
+  "sample_id": "critic.quality_deterioration.001",
+  "prompt_id": "critic.default.v1",
+  "role": "critic",
+  "input_payload": {
+    "hypothesis": {
+      "hypothesis_id": "hyp.quality_deterioration.001",
+      "agenda_id": "agenda.quality_deterioration.001",
+      "family": "quality_deterioration",
+      "thesis_name": "Leverage rising while cash generation weakens",
+      "economic_rationale": "Firms with weakening operating cash generation relative to leverage tend to underperform on a medium horizon.",
+      "expected_direction": "lower_signal_outperforms",
+      "horizon": "medium",
+      "target_region": "USA",
+      "target_universe": "TOP3000",
+      "market_context": "Explore firms where leverage worsens while cash generation deteriorates, with conservative normalization and low structural risk.",
+      "field_classes": ["fundamental", "price"],
+      "preferred_update_cadences": ["quarterly", "daily"],
+      "risk_notes": ["Require final cross-sectional normalization"],
+      "evidence_requirements": ["Positive risk-adjusted performance", "No severe critique issues"],
+      "forbidden_patterns": ["short_delay_on_slow_fundamentals", "raw_level_only"],
+      "confidence": 0.8,
+      "author": "planner_prompt_sample"
+    },
+    "blueprint": {
+      "blueprint_id": "bp.quality_deterioration.001",
+      "hypothesis_id": "hyp.quality_deterioration.001",
+      "summary": "Medium-horizon quality deterioration with final cross-sectional ranking.",
+      "expression_intent": "Compare weakening cash generation against leverage build-up.",
+      "field_selections": [
+        {
+          "field_id": "cashflow_op",
+          "field_class": "fundamental",
+          "update_cadence": "quarterly",
+          "role": "primary_signal",
+          "rationale": "Operating cashflow deterioration is the quality signal core."
+        },
+        {
+          "field_id": "debt_lt",
+          "field_class": "fundamental",
+          "update_cadence": "quarterly",
+          "role": "denominator_scale",
+          "rationale": "Long-term debt reflects leverage deterioration."
+        },
+        {
+          "field_id": "close",
+          "field_class": "price",
+          "update_cadence": "daily",
+          "role": "confirmation",
+          "rationale": "Cross-sectional stability anchor for conservative synthesis."
+        }
+      ],
+      "primary_fields": ["cashflow_op", "debt_lt"],
+      "secondary_fields": ["close"],
+      "transform_plan": [
+        {
+          "name": "cashflow_delta_63",
+          "kind": "delta",
+          "input_fields": ["cashflow_op"],
+          "lookback_days": 63,
+          "constant": null,
+          "rationale": "Use a medium-horizon change signal for a slow fundamental field."
+        },
+        {
+          "name": "debt_delta_63",
+          "kind": "delta",
+          "input_fields": ["debt_lt"],
+          "lookback_days": 63,
+          "constant": null,
+          "rationale": "Use a matching horizon for leverage change."
+        },
+        {
+          "name": "quality_spread",
+          "kind": "spread",
+          "input_fields": ["cashflow_op", "debt_lt"],
+          "lookback_days": null,
+          "constant": null,
+          "rationale": "Translate quality deterioration into a simple spread form."
+        }
+      ],
+      "normalization_plan": [
+        {
+          "kind": "cross_sectional_rank",
+          "target": "final_expression",
+          "rationale": "Final rank reduces outlier domination and makes cross-sectional use safer."
+        }
+      ],
+      "risk_control_plan": [
+        {
+          "kind": "outer_rank",
+          "parameters": {},
+          "rationale": "Explicit final ranking is mandatory for conservative first-pass signals."
+        },
+        {
+          "kind": "denominator_floor",
+          "parameters": {"epsilon": 0.01},
+          "rationale": "Avoid unstable division denominators."
+        }
+      ],
+      "operator_policy": {
+        "allowed_operators": ["rank", "divide", "subtract", "add", "abs", "ts_delta"],
+        "forbidden_operators": ["ts_sum", "group_backfill", "trade_when"],
+        "max_operator_count": 6,
+        "max_nesting_depth": 4,
+        "require_explicit_lookbacks": true,
+        "require_outer_normalization": true
+      },
+      "skeleton_templates": [
+        {
+          "template_id": "skel.rank_spread.001",
+          "name": "ranked_quality_spread",
+          "template": "rank(divide(subtract(FIELD_A, FIELD_B), add(abs(FIELD_B), CONST_EPS)))",
+          "slot_names": ["FIELD_A", "FIELD_B", "CONST_EPS"],
+          "rationale": "Safe normalized spread around two key fields."
+        }
+      ],
+      "disallowed_patterns": ["short_delay_on_slow_fundamentals", "missing_outer_rank"],
+      "target_expression_count": 4,
+      "notes": "Golden sample blueprint for critic contract validation."
+    },
+    "candidate": {
+      "candidate_id": "cand.quality_deterioration.001",
+      "blueprint_id": "bp.quality_deterioration.001",
+      "hypothesis_id": "hyp.quality_deterioration.001",
+      "expression": "rank(divide(subtract(cashflow_op, debt_lt), add(abs(debt_lt), 0.01)))",
+      "generation_method": "skeleton_fill",
+      "skeleton_template_id": "skel.rank_spread.001",
+      "placeholder_bindings": {
+        "FIELD_A": "cashflow_op",
+        "FIELD_B": "debt_lt",
+        "CONST_EPS": 0.01
+      },
+      "notes": null
+    },
+    "policy_notes": [
+      "Fail candidates with high severity structural issues."
+    ],
+    "output_contract": "CritiqueReport"
+  },
+  "output_payload": {
+    "critique": {
+      "critique_id": "critique.quality_deterioration.001",
+      "candidate_id": "cand.quality_deterioration.001",
+      "blueprint_id": "bp.quality_deterioration.001",
+      "passes": true,
+      "overall_score": 0.88,
+      "structural_quality_score": 0.9,
+      "economic_coherence_score": 0.86,
+      "data_horizon_alignment_score": 0.88,
+      "issues": [
+        {
+          "code": "conservative_signal",
+          "severity": "low",
+          "message": "Signal is conservative and may have modest spread.",
+          "suggestion": "Consider a complementary confirmation term if differentiation is weak."
+        }
+      ],
+      "repair_suggestions": [
+        "Optionally add a confirmation term from price momentum."
+      ],
+      "tags": ["sample", "quality"],
+      "critic_name": "rule_based_strategic_critic"
+    }
+  },
+  "notes": [
+    "Golden sample for strategic critic contract validation."
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "sample_id": "planner.quality_deterioration.001",
+  "prompt_id": "planner.default.v1",
+  "role": "planner",
+  "input_payload": {
+    "agenda": {
+      "agenda_id": "agenda.quality_deterioration.001",
+      "name": "Medium-horizon quality deterioration",
+      "family": "quality_deterioration",
+      "priority": 0.8,
+      "target_region": "USA",
+      "target_universe": "TOP3000",
+      "target_horizons": ["medium"],
+      "motivation": "Explore firms where leverage worsens while cash generation deteriorates, with conservative normalization and low structural risk.",
+      "constraints": ["require_cross_sectional_normalization", "avoid_short_delay_on_fundamentals"],
+      "tags": ["quality", "fundamental", "medium_horizon"],
+      "owner": "system",
+      "status": "active"
+    },
+    "field_catalog_excerpt": [
+      {
+        "field_id": "cashflow_op",
+        "field_class": "fundamental",
+        "update_cadence": "quarterly",
+        "description": "Operating cashflow for detecting quality improvement or deterioration.",
+        "recommended_horizons": ["medium", "long"],
+        "discouraged_patterns": ["short_delay_on_slow_fundamentals", "raw_level_only"]
+      },
+      {
+        "field_id": "debt_lt",
+        "field_class": "fundamental",
+        "update_cadence": "quarterly",
+        "description": "Long-term debt level for leverage-related quality research.",
+        "recommended_horizons": ["medium", "long"],
+        "discouraged_patterns": ["short_delay_on_slow_fundamentals", "raw_level_only"]
+      },
+      {
+        "field_id": "close",
+        "field_class": "price",
+        "update_cadence": "daily",
+        "description": "Adjusted close price for liquid common equities.",
+        "recommended_horizons": ["short", "medium", "long"],
+        "discouraged_patterns": ["raw_level_only"]
+      }
+    ],
+    "policy_notes": [
+      "Prefer conservative hypotheses with explicit forbidden patterns.",
+      "Use field classes that align with the target medium horizon."
+    ],
+    "output_contract": "HypothesisSpec"
+  },
+  "output_payload": {
+    "hypothesis": {
+      "hypothesis_id": "hyp.quality_deterioration.001",
+      "agenda_id": "agenda.quality_deterioration.001",
+      "family": "quality_deterioration",
+      "thesis_name": "Leverage rising while cash generation weakens",
+      "economic_rationale": "Firms with weakening operating cash generation relative to leverage tend to underperform on a medium horizon.",
+      "expected_direction": "lower_signal_outperforms",
+      "horizon": "medium",
+      "target_region": "USA",
+      "target_universe": "TOP3000",
+      "market_context": "Explore firms where leverage worsens while cash generation deteriorates, with conservative normalization and low structural risk.",
+      "field_classes": ["fundamental", "price"],
+      "preferred_update_cadences": ["quarterly", "daily"],
+      "risk_notes": ["Require final cross-sectional normalization"],
+      "evidence_requirements": ["Positive risk-adjusted performance", "No severe critique issues"],
+      "forbidden_patterns": ["short_delay_on_slow_fundamentals", "raw_level_only"],
+      "confidence": 0.8,
+      "author": "planner_prompt_sample"
+    },
+    "planner_notes": [
+      "Use both slow fundamental and fast price classes for medium-horizon quality deterioration."
+    ]
+  },
+  "notes": [
+    "Golden sample for hypothesis planner contract validation."
+  ]
+}

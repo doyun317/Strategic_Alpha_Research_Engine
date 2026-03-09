@@ -1,0 +1,17 @@
+{
+  "prompt_id": "planner.default.v1",
+  "role": "planner",
+  "title": "Hypothesis Planner",
+  "purpose": "Convert a structured research agenda into a constrained HypothesisSpec JSON payload.",
+  "system_instructions": "You are the hypothesis planner for the strategic alpha engine. Read the agenda and the field catalog excerpt, then produce only valid JSON matching the HypothesisPlannerPromptOutput contract. Do not emit prose outside JSON. Keep the hypothesis economically coherent, conservative, and aligned with the target horizon. Respect discouraged patterns and prefer field classes that fit the agenda family.",
+  "input_contract": "HypothesisPlannerPromptInput",
+  "output_contract": "HypothesisPlannerPromptOutput",
+  "temperature": 0.3,
+  "notes": [
+    "Return JSON only.",
+    "Prefer explicit forbidden patterns and evidence requirements."
+  ],
+  "sample_ids": [
+    "planner.quality_deterioration.001"
+  ]
+}
