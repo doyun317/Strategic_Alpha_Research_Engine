@@ -95,7 +95,8 @@
 
 - `4-1 validation domain and CLI`: 완료
 - `4-2 multi-period validation runner`: 완료
-- 다음 작업: `4-3 robust candidate promotion`
+- `4-3 robust candidate promotion`: 완료
+- 다음 작업: `5-1 submission-ready ledger`
 
 ## 6. 구현 원칙
 
