@@ -89,6 +89,17 @@ python -m strategic_alpha_engine plan --out tmp/plan.json
 python -m strategic_alpha_engine synthesize --plan-in tmp/plan.json --out tmp/synthesis.json
 ```
 
+Run simulation and inspect local status:
+
+```bash
+# current simulate command uses the fake Brain adapter and persists local ledgers
+python -m strategic_alpha_engine simulate --artifacts-dir artifacts
+python -m strategic_alpha_engine status --artifacts-dir artifacts
+
+# optional: persist the status summary report
+python -m strategic_alpha_engine status --artifacts-dir artifacts --out artifacts/reports/latest_status.json
+```
+
 ## Schema Commands
 
 Print JSON schema:
@@ -128,12 +139,12 @@ Current implementation includes:
 - domain schemas for agenda, hypothesis, blueprint, candidate, critique
 - metadata-backed static validator before critique
 - prompt assets and golden samples for planner / blueprint / critic roles
-- standalone `plan` and `synthesize` CLI workflows
+- standalone `plan`, `synthesize`, `simulate`, and `status` CLI workflows
 - immutable simulation request / run domain models
 - Brain simulation client contract and fake adapter
 - simulation orchestrator workflow for critique-passed candidates
 - local file-based artifact ledger for run outputs
-- local manifest-based state ledger for candidate/run/family state
+- local manifest-based state ledger for candidate/run/family state and status summaries
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic

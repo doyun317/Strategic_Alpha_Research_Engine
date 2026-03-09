@@ -172,3 +172,93 @@ def test_synthesize_command_reads_hypothesis_and_blueprint_files(tmp_path, capsy
     assert len(payload["accepted_candidate_ids"]) + len(payload["rejected_candidate_ids"]) == len(
         payload["evaluations"]
     )
+
+
+def test_simulate_command_persists_artifacts_and_state(tmp_path, capsys):
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "default.env").write_text(
+        "\n".join(
+            [
+                "SAE_ENV=test",
+                "SAE_REGION=USA",
+                "SAE_UNIVERSE=TOP3000",
+                "SAE_DEFAULT_TEST_PERIOD=P2Y0M0D",
+                "SAE_SIMULATION_DELAY=1",
+                "SAE_SIMULATION_NEUTRALIZATION=subindustry",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+
+    exit_code = main(
+        [
+            "simulate",
+            "--settings-dir",
+            str(settings_dir),
+            "--artifacts-dir",
+            str(artifacts_dir),
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    run_dir = artifacts_dir / "runs" / payload["run_id"]
+    state_dir = artifacts_dir / "state"
+
+    assert exit_code == 0
+    assert payload["family"] == "quality_deterioration"
+    assert payload["policy"]["test_period"] == "P2Y0M0D"
+    assert payload["simulation_status_counts"]["succeeded"] == len(payload["simulated_candidate_ids"])
+    assert run_dir.exists()
+    assert (run_dir / "agenda.json").exists()
+    assert (run_dir / "candidates.jsonl").exists()
+    assert (run_dir / "simulations.jsonl").exists()
+    assert state_dir.exists()
+    assert (state_dir / "candidate_stages.jsonl").exists()
+    assert (state_dir / "run_states.jsonl").exists()
+    assert (state_dir / "family_stats.json").exists()
+
+
+def test_status_command_summarizes_local_ledgers(tmp_path, capsys):
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "default.env").write_text(
+        "\n".join(
+            [
+                "SAE_ENV=test",
+                "SAE_REGION=USA",
+                "SAE_UNIVERSE=TOP3000",
+                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+
+    simulate_exit_code = main(
+        [
+            "simulate",
+            "--settings-dir",
+            str(settings_dir),
+            "--artifacts-dir",
+            str(artifacts_dir),
+        ]
+    )
+    _ = capsys.readouterr()
+
+    exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert simulate_exit_code == 0
+    assert exit_code == 0
+    assert payload["loop_status"]["current_state"] == "not_started"
+    assert payload["agenda_status"]["latest_family"] == "quality_deterioration"
+    assert payload["validation_backlog"]["total_entries"] == 0
+    assert payload["candidate_stage_counts"]["sim_passed"] == 4
+    assert payload["runs"]["counts_by_kind"]["simulate"] == 1
+    assert payload["family_stats"][0]["sim_passed_candidates"] == 4
