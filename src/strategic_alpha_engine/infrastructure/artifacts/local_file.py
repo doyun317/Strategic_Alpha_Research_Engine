@@ -17,7 +17,11 @@ from strategic_alpha_engine.application.workflows.simulate import (
     SimulationOrchestratorResult,
 )
 from strategic_alpha_engine.application.workflows.synthesize import CandidateEvaluation, SynthesizeResult
-from strategic_alpha_engine.application.workflows.validate import ValidateResult, ValidationOutcome
+from strategic_alpha_engine.application.workflows.validate import (
+    MultiPeriodValidateResult,
+    ValidateResult,
+    ValidationOutcome,
+)
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
@@ -115,6 +119,18 @@ class LocalFileArtifactLedger:
         )
         return run_dir
 
+    def write_validation_matrix(
+        self,
+        run_id: str,
+        payload: dict,
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_json(
+            run_dir / "validation_matrix.json",
+            payload,
+        )
+        return run_dir
+
     def write_plan_result(self, run_id: str, result: PlanResult) -> Path:
         return self.write_context(
             run_id,
@@ -181,7 +197,7 @@ class LocalFileArtifactLedger:
     def write_validation_result(
         self,
         run_id: str,
-        result: ValidateResult,
+        result: ValidateResult | MultiPeriodValidateResult,
         *,
         agenda: ResearchAgenda | None = None,
     ) -> Path:
@@ -191,12 +207,26 @@ class LocalFileArtifactLedger:
             hypothesis=result.hypothesis,
             blueprint=result.blueprint,
         )
-        return self.write_validation_records(
-            run_id,
-            records=[
+        records = []
+        if isinstance(result, MultiPeriodValidateResult):
+            for period_result in result.period_results:
+                records.extend(
+                    self._validation_record_from_outcome(outcome)
+                    for outcome in period_result.outcomes
+                )
+            self.write_validation_matrix(
+                run_id,
+                result.validation_matrix.model_dump(mode="json"),
+            )
+        else:
+            records.extend(
                 self._validation_record_from_outcome(outcome)
                 for outcome in result.outcomes
-            ],
+            )
+
+        return self.write_validation_records(
+            run_id,
+            records=records,
         )
 
     def _candidate_record_from_evaluation(self, evaluation: CandidateEvaluation) -> CandidateArtifactRecord:

@@ -30,6 +30,7 @@ from strategic_alpha_engine.application.services import (
     StaticHypothesisPlanner,
 )
 from strategic_alpha_engine.application.workflows import (
+    MultiPeriodValidateWorkflow,
     PlanWorkflow,
     ResearchOnceWorkflow,
     SimulationExecutionPolicy,
@@ -37,6 +38,7 @@ from strategic_alpha_engine.application.workflows import (
     StageAEvaluationWorkflow,
     SynthesizeWorkflow,
     ValidateWorkflow,
+    build_validation_matrix,
 )
 from strategic_alpha_engine.config import RuntimeSettings, load_runtime_settings
 from strategic_alpha_engine.domain import (
@@ -155,6 +157,17 @@ def _build_stage_a_workflow() -> StageAEvaluationWorkflow:
 def _build_validate_workflow(*, base_time: datetime | None = None) -> ValidateWorkflow:
     return ValidateWorkflow(
         validation_runner=RuleBasedValidationRunner(base_time=base_time),
+    )
+
+
+def _build_multi_period_validate_workflow(
+    *,
+    base_time: datetime | None = None,
+    minimum_passing_periods: int = 2,
+) -> MultiPeriodValidateWorkflow:
+    return MultiPeriodValidateWorkflow(
+        validate_workflow=_build_validate_workflow(base_time=base_time),
+        minimum_passing_periods=minimum_passing_periods,
     )
 
 
@@ -443,6 +456,23 @@ def _build_validation_backlog_entries(
     return entries
 
 
+def _resolve_validation_periods(
+    *,
+    validation_stage: ValidationStage,
+    requested_periods: list[str] | None,
+) -> list[str]:
+    if requested_periods:
+        unique_periods: list[str] = []
+        for period in requested_periods:
+            if period not in unique_periods:
+                unique_periods.append(period)
+        return unique_periods
+
+    if validation_stage == ValidationStage.STAGE_B:
+        return ["P1Y0M0D", "P3Y0M0D", "P5Y0M0D"]
+    return ["P5Y0M0D"]
+
+
 def _latest_validation_backlog_entries(
     entries: list[ValidationBacklogEntry],
 ) -> list[ValidationBacklogEntry]:
@@ -509,6 +539,42 @@ def _build_validation_summary(validation_records: list[ValidationRecord]) -> dic
         "counts_by_period": dict(sorted(counts_by_period.items())),
         "latest_run_id": latest_record.source_run_id,
     }
+
+
+def _build_validation_matrix_summary(validation_records: list[ValidationRecord]) -> dict:
+    if not validation_records:
+        return {
+            "latest_run_id": None,
+            "validation_stage": None,
+            "requested_periods": [],
+            "required_passing_periods": None,
+            "total_candidates": 0,
+            "passed_candidate_count": 0,
+            "failed_candidate_count": 0,
+            "rows": [],
+        }
+
+    latest_record = max(validation_records, key=lambda record: record.validated_at)
+    latest_run_id = latest_record.source_run_id
+    latest_run_records = [
+        record
+        for record in validation_records
+        if record.source_run_id == latest_run_id
+    ]
+    latest_run_records.sort(key=lambda record: (record.candidate_id, record.period))
+    validation_stage = latest_run_records[0].validation_stage
+    requested_periods: list[str] = []
+    for record in latest_run_records:
+        if record.period not in requested_periods:
+            requested_periods.append(record.period)
+
+    matrix = build_validation_matrix(
+        latest_run_records,
+        source_run_id=latest_run_id,
+        validation_stage=validation_stage,
+        requested_periods=requested_periods,
+    )
+    return matrix.model_dump(mode="json")
 
 
 def _build_simulation_status_counts(simulation_result) -> dict[str, int]:
@@ -751,6 +817,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
             "counts_by_status": dict(sorted(backlog_counts.items())),
         },
         "validation_summary": _build_validation_summary(validation_records),
+        "validation_matrix": _build_validation_matrix_summary(validation_records),
         "agenda_queue": _build_agenda_queue_summary(agenda_queue_records),
         "candidate_stage_counts": _build_stage_counts(candidate_stage_records),
         "recent_candidate_flow_24h": {
@@ -1000,7 +1067,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[ValidationStage.STAGE_B.value, ValidationStage.STAGE_C.value],
         default=ValidationStage.STAGE_B.value,
     )
-    validate_parser.add_argument("--period", default="P3Y0M0D")
+    validate_parser.add_argument("--period", action="append", default=None)
     validate_parser.add_argument("--out", default=None)
 
     status_parser = subparsers.add_parser("status", help="Summarize local artifact and state ledgers")
@@ -1229,19 +1296,26 @@ def main(argv: list[str] | None = None) -> int:
             parser.exit(status=2, message=f"{exc}\n")
 
         validation_stage = ValidationStage(args.validation_stage)
+        periods = _resolve_validation_periods(
+            validation_stage=validation_stage,
+            requested_periods=args.period,
+        )
         run_id = _build_run_id("validate", hypothesis.family)
         started_at = _utc_now()
-        state_ledger.append_validation_backlog_entries(
-            _build_validation_backlog_entries(
-                run_id=run_id,
-                candidates=candidates,
-                family=hypothesis.family,
-                validation_stage=validation_stage,
-                period=args.period,
-                created_at=started_at,
-                status=ValidationBacklogStatus.PENDING,
+        pending_entries: list[ValidationBacklogEntry] = []
+        for period in periods:
+            pending_entries.extend(
+                _build_validation_backlog_entries(
+                    run_id=run_id,
+                    candidates=candidates,
+                    family=hypothesis.family,
+                    validation_stage=validation_stage,
+                    period=period,
+                    created_at=started_at,
+                    status=ValidationBacklogStatus.PENDING,
+                )
             )
-        )
+        state_ledger.append_validation_backlog_entries(pending_entries)
         state_ledger.append_run_state_records(
             [
                 RunStateRecord(
@@ -1254,14 +1328,14 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         try:
-            result = _build_validate_workflow(base_time=started_at).run(
+            result = _build_multi_period_validate_workflow(base_time=started_at).run(
                 source_run_id=run_id,
                 candidate_source_run_id=source_candidate_run_id,
                 hypothesis=hypothesis,
                 blueprint=blueprint,
                 candidates=candidates,
                 validation_stage=validation_stage,
-                period=args.period,
+                periods=periods,
             )
             artifact_ledger = LocalFileArtifactLedger(args.artifacts_dir)
             artifact_run_dir = artifact_ledger.write_validation_result(
@@ -1270,18 +1344,21 @@ def main(argv: list[str] | None = None) -> int:
                 agenda=agenda,
             )
             completed_at = _utc_now()
-            state_ledger.append_validation_backlog_entries(
-                _build_validation_backlog_entries(
-                    run_id=run_id,
-                    candidates=candidates,
-                    family=hypothesis.family,
-                    validation_stage=validation_stage,
-                    period=args.period,
-                    created_at=started_at,
-                    status=ValidationBacklogStatus.COMPLETED,
-                    updated_at=completed_at,
+            completed_entries: list[ValidationBacklogEntry] = []
+            for period in periods:
+                completed_entries.extend(
+                    _build_validation_backlog_entries(
+                        run_id=run_id,
+                        candidates=candidates,
+                        family=hypothesis.family,
+                        validation_stage=validation_stage,
+                        period=period,
+                        created_at=started_at,
+                        status=ValidationBacklogStatus.COMPLETED,
+                        updated_at=completed_at,
+                    )
                 )
-            )
+            state_ledger.append_validation_backlog_entries(completed_entries)
             state_ledger.append_run_state_records(
                 [
                     RunStateRecord(
@@ -1299,31 +1376,40 @@ def main(argv: list[str] | None = None) -> int:
                 "run_id": run_id,
                 "source_candidate_run_id": source_candidate_run_id,
                 "validation_stage": validation_stage.value,
-                "period": args.period,
+                "requested_periods": periods,
                 "validated_candidate_ids": result.validated_candidate_ids,
                 "passed_candidate_ids": result.passed_candidate_ids,
                 "failed_candidate_ids": result.failed_candidate_ids,
                 "artifact_run_dir": str(artifact_run_dir),
                 "state_dir": str(state_ledger.state_directory()),
                 "validation_summary": _build_validation_summary(
-                    [outcome.validation for outcome in result.outcomes]
+                    [
+                        outcome.validation
+                        for period_result in result.period_results
+                        for outcome in period_result.outcomes
+                    ]
                 ),
+                "validation_matrix": result.validation_matrix.model_dump(mode="json"),
             }
             _write_output(payload, args.out)
             return 0
         except Exception as exc:
-            state_ledger.append_validation_backlog_entries(
-                _build_validation_backlog_entries(
-                    run_id=run_id,
-                    candidates=candidates,
-                    family=hypothesis.family,
-                    validation_stage=validation_stage,
-                    period=args.period,
-                    created_at=started_at,
-                    status=ValidationBacklogStatus.CANCELLED,
-                    updated_at=_utc_now(),
+            cancelled_entries: list[ValidationBacklogEntry] = []
+            cancelled_at = _utc_now()
+            for period in periods:
+                cancelled_entries.extend(
+                    _build_validation_backlog_entries(
+                        run_id=run_id,
+                        candidates=candidates,
+                        family=hypothesis.family,
+                        validation_stage=validation_stage,
+                        period=period,
+                        created_at=started_at,
+                        status=ValidationBacklogStatus.CANCELLED,
+                        updated_at=cancelled_at,
+                    )
                 )
-            )
+            state_ledger.append_validation_backlog_entries(cancelled_entries)
             state_ledger.append_run_state_records(
                 [
                     RunStateRecord(
@@ -1331,7 +1417,7 @@ def main(argv: list[str] | None = None) -> int:
                         run_kind=RunKind.VALIDATE,
                         status=RunLifecycleStatus.FAILED,
                         started_at=started_at,
-                        completed_at=_utc_now(),
+                        completed_at=cancelled_at,
                         error_message=str(exc)[:300],
                     )
                 ]

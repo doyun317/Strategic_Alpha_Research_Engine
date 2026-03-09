@@ -181,6 +181,12 @@ class ArtifactLedger(Protocol):
         records: list[ValidationArtifactRecord],
     ) -> Path: ...
 
+    def write_validation_matrix(
+        self,
+        run_id: str,
+        payload: dict,
+    ) -> Path: ...
+
 
 class StateLedger(Protocol):
     def append_candidate_stage_records(self, records: list[CandidateStageRecord]) -> Path: ...
