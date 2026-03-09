@@ -12,6 +12,7 @@ from strategic_alpha_engine.application.services import (
     StaticHypothesisPlanner,
 )
 from strategic_alpha_engine.application.workflows import (
+    HumanReviewWorkflow,
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
     RobustPromotionWorkflow,
@@ -22,10 +23,12 @@ from strategic_alpha_engine.application.workflows import (
     SynthesizeWorkflow,
     ValidateWorkflow,
 )
-from strategic_alpha_engine.domain.enums import ValidationStage
+from strategic_alpha_engine.domain.enums import HumanReviewDecisionKind, ValidationStage
 from strategic_alpha_engine.domain.examples import build_sample_research_agenda
 from strategic_alpha_engine.infrastructure import FakeBrainSimulationClient, LocalFileArtifactLedger
 from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
+from strategic_alpha_engine.interfaces.cli.main import _build_pending_human_review_queue_records
+from strategic_alpha_engine.interfaces.cli.main import _build_submission_ready_inventory_records
 
 
 def _read_json(path):
@@ -184,6 +187,41 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
         ],
         promoted_at=validate_result.period_results[0].outcomes[0].validation.validated_at,
     )
+    submission_ready_inventory_records = _build_submission_ready_inventory_records(
+        run_id="promote.quality_deterioration.001",
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+        promotion_result=submission_ready_result,
+    )
+    review_result = HumanReviewWorkflow().run(
+        source_run_id="review.quality_deterioration.001",
+        submission_ready_source_run_id="promote.quality_deterioration.001",
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+        submission_ready_records=[
+            ledger._submission_ready_record_from_outcome(submission_ready_result.outcomes[0])
+        ],
+        reviewer="reviewer_01",
+        decision=HumanReviewDecisionKind.APPROVE,
+        reviewed_at=validate_result.period_results[0].outcomes[0].validation.validated_at,
+    )
+    pending_queue_records = _build_pending_human_review_queue_records(submission_ready_inventory_records)
+    resolved_queue_records = [
+        type(pending_queue_records[0])(
+            **{
+                **pending_queue_records[0].model_dump(mode="json"),
+                "queue_record_id": (
+                    "review_queue_update.review.quality_deterioration.001."
+                    "cand.bp.quality_deterioration.001.001.approve"
+                ),
+                "status": "approved",
+                "source_run_id": "review.quality_deterioration.001",
+                "reviewer": "reviewer_01",
+                "decision_id": review_result.outcomes[0].review_decision.decision_id,
+                "updated_at": review_result.outcomes[0].review_decision.reviewed_at.isoformat().replace("+00:00", "Z"),
+            }
+        )
+    ]
 
     ledger.write_validation_result(
         run_id,
@@ -199,12 +237,20 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
         submission_ready_result,
         agenda=plan_result.agenda,
     )
+    ledger.write_human_review_result(
+        "review.quality_deterioration.001",
+        review_result,
+        queue_records=resolved_queue_records,
+        agenda=plan_result.agenda,
+    )
 
     run_dir = tmp_path / "artifacts" / "runs" / run_id
     validations = _read_jsonl(run_dir / "validations.jsonl")
     matrix = _read_json(run_dir / "validation_matrix.json")
     robust_promotions = _read_jsonl(run_dir / "robust_promotion.jsonl")
     submission_ready = _read_jsonl(tmp_path / "artifacts" / "runs" / "promote.quality_deterioration.001" / "submission_ready.jsonl")
+    human_review = _read_jsonl(tmp_path / "artifacts" / "runs" / "review.quality_deterioration.001" / "human_review.jsonl")
+    review_queue = _read_jsonl(tmp_path / "artifacts" / "runs" / "review.quality_deterioration.001" / "review_queue.jsonl")
 
     assert _read_json(run_dir / "agenda.json")["agenda_id"] == "agenda.quality_deterioration.001"
     assert len(validations) == 6
@@ -215,3 +261,7 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
     assert robust_promotions[0]["candidate"]["candidate_id"] == robust_promotions[0]["promotion"]["candidate_id"]
     assert len(submission_ready) == 2
     assert submission_ready[0]["candidate"]["candidate_id"] == submission_ready[0]["submission_promotion"]["candidate_id"]
+    assert len(human_review) == 1
+    assert human_review[0]["submission_ready"]["candidate"]["candidate_id"] == human_review[0]["review_decision"]["candidate_id"]
+    assert len(review_queue) == 1
+    assert review_queue[0]["status"] == "approved"

@@ -103,15 +103,18 @@ Run simulation and inspect local status:
 python -m strategic_alpha_engine simulate --artifacts-dir artifacts
 python -m strategic_alpha_engine validate --artifacts-dir artifacts
 python -m strategic_alpha_engine promote --artifacts-dir artifacts
+python -m strategic_alpha_engine review --artifacts-dir artifacts --decision approve
 
 # optionally run a single explicit validation window instead of the default
 # stage_b multi-period set: P1Y0M0D, P3Y0M0D, P5Y0M0D
 python -m strategic_alpha_engine validate --artifacts-dir artifacts --period P3Y0M0D
 
 # validate writes robust_promotion.jsonl and updates candidate stages,
-# and promote advances robust candidates into the submission-ready inventory
+# promote advances robust candidates into the submission-ready inventory and queue,
+# and review resolves pending human-review items
 # status now includes validation_summary, validation_matrix,
-# robust_promotion_summary, and submission_ready_inventory
+# robust_promotion_summary, submission_ready_inventory,
+# human_review_queue, and human_review_summary
 python -m strategic_alpha_engine status --artifacts-dir artifacts
 
 # optional: persist the status summary report
@@ -189,6 +192,8 @@ Current implementation includes:
 - robust candidate promotion after validation, including diversity guard and `robust_promotion.jsonl`
 - submission-ready promotion workflow and `promote` CLI
 - submission-ready artifact/state ledgers with inventory summary in `status`
+- pending human review queue created from promote runs
+- `review` CLI with approve / hold / reject decisions and human review ledgers
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
 - local agenda queue ledger and bounded `research-loop` execution mode

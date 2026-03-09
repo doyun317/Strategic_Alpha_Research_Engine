@@ -275,6 +275,8 @@ def test_status_command_summarizes_local_ledgers(tmp_path, capsys):
     assert payload["validation_matrix"]["total_candidates"] == 0
     assert payload["robust_promotion_summary"]["total_decisions"] == 0
     assert payload["submission_ready_inventory"]["total_candidates"] == 0
+    assert payload["human_review_queue"]["total_entries"] == 0
+    assert payload["human_review_summary"]["total_decisions"] == 0
 
 
 def test_policy_command_ranks_families_and_weights_agendas(tmp_path, capsys):
@@ -400,6 +402,7 @@ def test_research_loop_command_executes_multiple_iterations_and_updates_queue_st
     assert status_payload["validation_matrix"]["total_candidates"] == 0
     assert status_payload["robust_promotion_summary"]["total_decisions"] == 0
     assert status_payload["submission_ready_inventory"]["total_candidates"] == 0
+    assert status_payload["human_review_queue"]["total_entries"] == 0
 
 
 def test_validate_command_persists_validation_artifacts_and_updates_status(tmp_path, capsys):
@@ -688,12 +691,112 @@ def test_promote_command_creates_submission_ready_inventory_and_updates_status(t
         "cand.bp.quality_deterioration.001.001",
         "cand.bp.quality_deterioration.001.002",
     ]
+    assert promote_payload["queued_review_candidate_ids"] == promote_payload["submission_ready_candidate_ids"]
     assert (run_dir / "submission_ready.jsonl").exists()
     assert promote_payload["submission_ready_inventory"]["total_candidates"] == 2
+    assert promote_payload["human_review_queue"]["counts_by_status"]["pending"] == 2
     assert status_payload["submission_ready_inventory"]["total_candidates"] == 2
     assert status_payload["submission_ready_inventory"]["latest_run_id"] == promote_payload["run_id"]
+    assert status_payload["human_review_queue"]["counts_by_status"]["pending"] == 2
     assert status_payload["candidate_stage_counts"]["submission_ready"] == 2
     assert status_payload["candidate_stage_counts"]["robust_candidate"] == 0
     assert status_payload["candidate_stage_counts"]["sim_passed"] == 2
     assert status_payload["family_stats"][0]["submission_ready_candidates"] == 2
     assert status_payload["runs"]["counts_by_kind"]["promote"] == 1
+
+
+def test_review_command_holds_submission_ready_candidate_and_filters_inventory(tmp_path, capsys):
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "default.env").write_text(
+        "\n".join(
+            [
+                "SAE_ENV=test",
+                "SAE_REGION=USA",
+                "SAE_UNIVERSE=TOP3000",
+                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+
+    simulate_exit_code = main(
+        [
+            "simulate",
+            "--settings-dir",
+            str(settings_dir),
+            "--artifacts-dir",
+            str(artifacts_dir),
+        ]
+    )
+    simulate_payload = json.loads(capsys.readouterr().out)
+
+    validate_exit_code = main(
+        [
+            "validate",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--source-run-id",
+            simulate_payload["run_id"],
+        ]
+    )
+    validate_payload = json.loads(capsys.readouterr().out)
+
+    promote_exit_code = main(
+        [
+            "promote",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--source-run-id",
+            validate_payload["run_id"],
+        ]
+    )
+    promote_payload = json.loads(capsys.readouterr().out)
+
+    review_exit_code = main(
+        [
+            "review",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--source-run-id",
+            promote_payload["run_id"],
+            "--candidate-id",
+            "cand.bp.quality_deterioration.001.001",
+            "--decision",
+            "hold",
+            "--reviewer",
+            "reviewer_01",
+            "--note",
+            "needs manual follow-up",
+        ]
+    )
+    review_payload = json.loads(capsys.readouterr().out)
+
+    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
+    status_payload = json.loads(capsys.readouterr().out)
+
+    run_dir = artifacts_dir / "runs" / review_payload["run_id"]
+
+    assert simulate_exit_code == 0
+    assert validate_exit_code == 0
+    assert promote_exit_code == 0
+    assert review_exit_code == 0
+    assert status_exit_code == 0
+    assert review_payload["held_candidate_ids"] == ["cand.bp.quality_deterioration.001.001"]
+    assert review_payload["approved_candidate_ids"] == []
+    assert review_payload["submission_ready_inventory"]["total_candidates"] == 1
+    assert review_payload["human_review_queue"]["counts_by_status"]["held"] == 1
+    assert review_payload["human_review_queue"]["counts_by_status"]["pending"] == 1
+    assert review_payload["human_review_summary"]["counts_by_decision"]["hold"] == 1
+    assert (run_dir / "human_review.jsonl").exists()
+    assert (run_dir / "review_queue.jsonl").exists()
+    assert status_payload["submission_ready_inventory"]["total_candidates"] == 1
+    assert status_payload["human_review_queue"]["counts_by_status"]["held"] == 1
+    assert status_payload["human_review_queue"]["counts_by_status"]["pending"] == 1
+    assert status_payload["candidate_stage_counts"]["submission_ready"] == 1
+    assert status_payload["candidate_stage_counts"]["robust_candidate"] == 1
+    assert status_payload["family_stats"][0]["submission_ready_candidates"] == 1
+    assert status_payload["family_stats"][0]["robust_candidates"] == 2
+    assert status_payload["runs"]["counts_by_kind"]["review"] == 1

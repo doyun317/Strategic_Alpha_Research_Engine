@@ -5,16 +5,19 @@ from strategic_alpha_engine.application.contracts import (
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
+    HumanReviewQueueRecord,
     RunStateRecord,
     SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.domain.enums import (
     CandidateLifecycleStage,
+    HumanReviewQueueStatus,
     RunKind,
     RunLifecycleStatus,
     ValidationBacklogStatus,
 )
+from strategic_alpha_engine.domain.review import HumanReviewDecision
 from strategic_alpha_engine.infrastructure import LocalFileStateLedger
 
 
@@ -138,6 +141,38 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
             promoted_at=datetime(2026, 1, 15, 15, 11, tzinfo=timezone.utc),
         )
     ]
+    human_review_queue_records = [
+        HumanReviewQueueRecord(
+            queue_record_id="review_queue.promote.quality_deterioration.001.cand.quality_deterioration.001.pending",
+            queue_entry_id="review_queue.promote.quality_deterioration.001.cand.quality_deterioration.001",
+            inventory_record_id="submission_ready.promote.quality_deterioration.001.cand.quality_deterioration.001",
+            candidate_id="cand.quality_deterioration.001",
+            hypothesis_id="hyp.quality_deterioration.001",
+            blueprint_id="bp.quality_deterioration.001",
+            family="quality_deterioration",
+            submission_ready_source_run_id="promote.quality_deterioration.001",
+            status=HumanReviewQueueStatus.PENDING,
+            source_run_id="promote.quality_deterioration.001",
+            created_at=datetime(2026, 1, 15, 15, 11, tzinfo=timezone.utc),
+        )
+    ]
+    human_review_decisions = [
+        HumanReviewDecision(
+            decision_id="review.review.quality_deterioration.001.cand.quality_deterioration.001.approve",
+            queue_entry_id="review_queue.promote.quality_deterioration.001.cand.quality_deterioration.001",
+            candidate_id="cand.quality_deterioration.001",
+            hypothesis_id="hyp.quality_deterioration.001",
+            blueprint_id="bp.quality_deterioration.001",
+            family="quality_deterioration",
+            source_run_id="review.quality_deterioration.001",
+            submission_ready_source_run_id="promote.quality_deterioration.001",
+            decision="approve",
+            to_stage="submission_ready",
+            reviewer="reviewer_01",
+            reasons=["manual_review_approved"],
+            reviewed_at=datetime(2026, 1, 15, 15, 20, tzinfo=timezone.utc),
+        )
+    ]
 
     candidate_path = ledger.append_candidate_stage_records(candidate_records)
     run_path = ledger.append_run_state_records(run_records)
@@ -146,6 +181,8 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
     learner_path = ledger.write_family_learner_summaries(learner_summaries)
     backlog_path = ledger.append_validation_backlog_entries(backlog_entries)
     submission_ready_path = ledger.append_submission_ready_records(submission_ready_records)
+    human_review_queue_path = ledger.append_human_review_queue_records(human_review_queue_records)
+    human_review_decisions_path = ledger.append_human_review_decisions(human_review_decisions)
 
     assert candidate_path.name == "candidate_stages.jsonl"
     assert run_path.name == "run_states.jsonl"
@@ -154,6 +191,8 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
     assert learner_path.name == "family_learner_summaries.json"
     assert backlog_path.name == "validation_backlog.jsonl"
     assert submission_ready_path.name == "submission_ready_candidates.jsonl"
+    assert human_review_queue_path.name == "human_review_queue.jsonl"
+    assert human_review_decisions_path.name == "human_review_decisions.jsonl"
 
     loaded_candidates = ledger.load_candidate_stage_records()
     loaded_runs = ledger.load_run_state_records()
@@ -162,6 +201,8 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
     loaded_learner_summaries = ledger.load_family_learner_summaries()
     loaded_backlog = ledger.load_validation_backlog_entries()
     loaded_submission_ready = ledger.load_submission_ready_records()
+    loaded_human_review_queue = ledger.load_human_review_queue_records()
+    loaded_human_review_decisions = ledger.load_human_review_decisions()
 
     assert [record.stage for record in loaded_candidates] == [
         CandidateLifecycleStage.CRITIQUE_PASSED,
@@ -174,6 +215,8 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
     assert loaded_learner_summaries[0].stage_a_pass_rate == 1.0
     assert loaded_backlog[0].requested_period == "P3Y0M0D"
     assert loaded_submission_ready[0].source_run_id == "promote.quality_deterioration.001"
+    assert loaded_human_review_queue[0].status == HumanReviewQueueStatus.PENDING
+    assert loaded_human_review_decisions[0].decision == "approve"
 
 
 def test_local_file_state_ledger_returns_empty_lists_for_missing_manifests(tmp_path):
@@ -186,3 +229,5 @@ def test_local_file_state_ledger_returns_empty_lists_for_missing_manifests(tmp_p
     assert ledger.load_family_learner_summaries() == []
     assert ledger.load_validation_backlog_entries() == []
     assert ledger.load_submission_ready_records() == []
+    assert ledger.load_human_review_queue_records() == []
+    assert ledger.load_human_review_decisions() == []

@@ -9,6 +9,7 @@ from strategic_alpha_engine.domain.base import EngineModel
 from strategic_alpha_engine.domain.common import IDENTIFIER_PATTERN, ensure_unique_sequence
 from strategic_alpha_engine.domain.enums import (
     CandidateLifecycleStage,
+    HumanReviewQueueStatus,
     ResearchFamily,
     RunKind,
     RunLifecycleStatus,
@@ -16,6 +17,7 @@ from strategic_alpha_engine.domain.enums import (
 )
 
 _TEST_PERIOD_PATTERN = re.compile(r"^P(?:\d+Y)?(?:\d+M)?(?:\d+D)?$")
+_REVIEWER_PATTERN = r"^[A-Za-z0-9_.@-]{3,64}$"
 
 
 def _require_timezone_aware(value: datetime | None, field_name: str) -> datetime | None:
@@ -228,3 +230,39 @@ class SubmissionReadyCandidateRecord(EngineModel):
     @classmethod
     def validate_promoted_at(cls, value: datetime) -> datetime:
         return _require_timezone_aware(value, "promoted_at")
+
+
+class HumanReviewQueueRecord(EngineModel):
+    queue_record_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    queue_entry_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    inventory_record_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    candidate_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    hypothesis_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    blueprint_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    family: ResearchFamily
+    submission_ready_source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    status: HumanReviewQueueStatus = HumanReviewQueueStatus.PENDING
+    source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    priority: float = Field(default=0.8, ge=0.0, le=1.0)
+    reviewer: str | None = Field(default=None, pattern=_REVIEWER_PATTERN)
+    decision_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    created_at: datetime
+    updated_at: datetime | None = None
+    notes: str | None = Field(default=None, max_length=240)
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def validate_timestamps(cls, value: datetime | None, info) -> datetime | None:
+        return _require_timezone_aware(value, info.field_name)
+
+    @model_validator(mode="after")
+    def validate_queue_state(self) -> "HumanReviewQueueRecord":
+        if self.updated_at is not None and self.updated_at < self.created_at:
+            raise ValueError("updated_at must be greater than or equal to created_at")
+        if self.status == HumanReviewQueueStatus.PENDING:
+            if self.reviewer is not None or self.decision_id is not None or self.updated_at is not None:
+                raise ValueError("pending review queue records must not include reviewer, decision_id, or updated_at")
+            return self
+        if self.reviewer is None or self.decision_id is None or self.updated_at is None:
+            raise ValueError("resolved review queue records must include reviewer, decision_id, and updated_at")
+        return self

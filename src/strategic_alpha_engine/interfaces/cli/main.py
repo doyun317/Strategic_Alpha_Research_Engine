@@ -11,7 +11,9 @@ from strategic_alpha_engine.application.contracts import (
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
+    HumanReviewQueueRecord,
     RunStateRecord,
+    SubmissionReadyArtifactRecord,
     SubmissionReadyCandidateRecord,
     ValidationPromotionArtifactRecord,
     ValidationBacklogEntry,
@@ -34,6 +36,7 @@ from strategic_alpha_engine.application.services import (
     candidate_signature,
 )
 from strategic_alpha_engine.application.workflows import (
+    HumanReviewWorkflow,
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
     SubmissionReadyPromotionWorkflow,
@@ -66,6 +69,8 @@ from strategic_alpha_engine.domain import (
 from strategic_alpha_engine.domain.enums import (
     CandidateLifecycleStage,
     FieldClass,
+    HumanReviewDecisionKind,
+    HumanReviewQueueStatus,
     ResearchHorizon,
     RunKind,
     RunLifecycleStatus,
@@ -73,6 +78,7 @@ from strategic_alpha_engine.domain.enums import (
     ValidationBacklogStatus,
     ValidationStage,
 )
+from strategic_alpha_engine.domain.review import HumanReviewDecision
 from strategic_alpha_engine.infrastructure.artifacts import LocalFileArtifactLedger
 from strategic_alpha_engine.infrastructure.brain import FakeBrainSimulationClient
 from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
@@ -185,6 +191,10 @@ def _build_robust_promotion_workflow() -> RobustPromotionWorkflow:
 
 def _build_submission_ready_workflow() -> SubmissionReadyPromotionWorkflow:
     return SubmissionReadyPromotionWorkflow()
+
+
+def _build_human_review_workflow() -> HumanReviewWorkflow:
+    return HumanReviewWorkflow()
 
 
 def _load_synthesize_inputs(
@@ -407,6 +417,35 @@ def _resolve_promote_source_run_id(
         if record.run_kind == RunKind.VALIDATE:
             return record.run_id
     raise ValueError("No validate run is available for submission-ready promotion")
+
+
+def _resolve_review_source_run_id(
+    state_ledger: LocalFileStateLedger,
+    explicit_run_id: str | None,
+) -> str:
+    if explicit_run_id:
+        return explicit_run_id
+
+    latest_run_records = list(_latest_run_state_records(state_ledger.load_run_state_records()).values())
+    latest_run_records.sort(
+        key=lambda record: record.completed_at or record.started_at,
+        reverse=True,
+    )
+    latest_queue_records = _latest_human_review_queue_records(
+        state_ledger.load_human_review_queue_records()
+    )
+    pending_source_run_ids = {
+        record.submission_ready_source_run_id
+        for record in latest_queue_records
+        if record.status == HumanReviewQueueStatus.PENDING
+    }
+    for record in latest_run_records:
+        if record.run_kind == RunKind.PROMOTE and record.run_id in pending_source_run_ids:
+            return record.run_id
+    for record in latest_run_records:
+        if record.run_kind == RunKind.PROMOTE:
+            return record.run_id
+    raise ValueError("No promote run is available for human review")
 
 
 def _load_validate_inputs(
@@ -658,6 +697,144 @@ def _load_promote_inputs(
     )
 
 
+def _load_submission_ready_artifact_records(
+    root_dir: str | Path,
+    source_submission_ready_run_id: str,
+) -> list[SubmissionReadyArtifactRecord]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    submission_ready_path = artifacts_root / "runs" / source_submission_ready_run_id / "submission_ready.jsonl"
+    candidate_fields = set(ExpressionCandidate.model_fields)
+    records: list[SubmissionReadyArtifactRecord] = []
+    for payload in _read_jsonl_file(submission_ready_path):
+        candidate_payload = payload.get("candidate", {})
+        robust_promotion_payload = payload.get("robust_promotion", {})
+        robust_candidate_payload = robust_promotion_payload.get("candidate", {})
+        records.append(
+            SubmissionReadyArtifactRecord(
+                **{
+                    **payload,
+                    "candidate": {
+                        key: value
+                        for key, value in candidate_payload.items()
+                        if key in candidate_fields
+                    },
+                    "robust_promotion": {
+                        **robust_promotion_payload,
+                        "candidate": {
+                            key: value
+                            for key, value in robust_candidate_payload.items()
+                            if key in candidate_fields
+                        },
+                    },
+                }
+            )
+        )
+    return records
+
+
+def _build_pending_human_review_queue_records(
+    records: list[SubmissionReadyCandidateRecord],
+) -> list[HumanReviewQueueRecord]:
+    queue_records: list[HumanReviewQueueRecord] = []
+    for record in records:
+        queue_entry_id = f"review_queue.{record.source_run_id}.{record.candidate_id}"
+        queue_records.append(
+            HumanReviewQueueRecord(
+                queue_record_id=f"{queue_entry_id}.pending",
+                queue_entry_id=queue_entry_id,
+                inventory_record_id=record.inventory_record_id,
+                candidate_id=record.candidate_id,
+                hypothesis_id=record.hypothesis_id,
+                blueprint_id=record.blueprint_id,
+                family=record.family,
+                submission_ready_source_run_id=record.source_run_id,
+                status=HumanReviewQueueStatus.PENDING,
+                source_run_id=record.source_run_id,
+                priority=0.85,
+                created_at=record.promoted_at,
+                notes="queued for human review after submission_ready promotion",
+            )
+        )
+    return queue_records
+
+
+def _load_review_inputs(
+    root_dir: str | Path,
+    state_ledger: LocalFileStateLedger,
+    source_submission_ready_run_id: str,
+    candidate_ids: list[str] | None,
+) -> tuple[
+    ResearchAgenda | None,
+    HypothesisSpec,
+    SignalBlueprint,
+    list[SubmissionReadyArtifactRecord],
+    list[HumanReviewQueueRecord],
+]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    context = _load_run_context(artifacts_root, source_submission_ready_run_id)
+    hypothesis_payload = context["hypothesis"]
+    blueprint_payload = context["blueprint"]
+    if hypothesis_payload is None or blueprint_payload is None:
+        raise ValueError("review source run must have hypothesis and blueprint context")
+
+    latest_stage_records = _latest_candidate_stage_records(state_ledger.load_candidate_stage_records())
+    submission_ready_state_records = [
+        record
+        for record in _latest_submission_ready_records(state_ledger.load_submission_ready_records())
+        if record.source_run_id == source_submission_ready_run_id
+        and latest_stage_records.get(record.candidate_id) is not None
+        and latest_stage_records[record.candidate_id].stage == CandidateLifecycleStage.SUBMISSION_READY
+    ]
+    if not submission_ready_state_records:
+        raise ValueError("No submission_ready candidates are available for human review from the selected run")
+
+    latest_queue_records = [
+        record
+        for record in _latest_human_review_queue_records(state_ledger.load_human_review_queue_records())
+        if record.submission_ready_source_run_id == source_submission_ready_run_id
+    ]
+    pending_queue_records = [
+        record
+        for record in latest_queue_records
+        if record.status == HumanReviewQueueStatus.PENDING
+    ]
+    if not pending_queue_records:
+        pending_queue_records = _build_pending_human_review_queue_records(submission_ready_state_records)
+
+    requested_candidate_ids = set(candidate_ids or [])
+    pending_candidate_ids = {record.candidate_id for record in pending_queue_records}
+    if requested_candidate_ids:
+        pending_candidate_ids &= requested_candidate_ids
+
+    submission_ready_records = [
+        record
+        for record in _load_submission_ready_artifact_records(
+            artifacts_root,
+            source_submission_ready_run_id,
+        )
+        if record.candidate.candidate_id in pending_candidate_ids
+    ]
+    submission_ready_records.sort(key=lambda record: record.candidate.candidate_id)
+    pending_queue_records = [
+        record
+        for record in pending_queue_records
+        if record.candidate_id in pending_candidate_ids
+    ]
+    pending_queue_records.sort(key=lambda record: record.candidate_id)
+
+    if not submission_ready_records or not pending_queue_records:
+        raise ValueError("No pending submission_ready candidates are available for human review")
+
+    agenda = ResearchAgenda(**context["agenda"]) if context["agenda"] is not None else None
+    return (
+        agenda,
+        HypothesisSpec(**hypothesis_payload),
+        SignalBlueprint(**blueprint_payload),
+        submission_ready_records,
+        pending_queue_records,
+    )
+
+
 def _build_validation_summary(validation_records: list[ValidationRecord]) -> dict:
     if not validation_records:
         return {
@@ -782,6 +959,97 @@ def _build_robust_promotion_summary(
     }
 
 
+def _latest_human_review_queue_records(
+    records: list[HumanReviewQueueRecord],
+) -> list[HumanReviewQueueRecord]:
+    latest: dict[str, HumanReviewQueueRecord] = {}
+    for record in records:
+        current = latest.get(record.queue_entry_id)
+        current_timestamp = (current.updated_at or current.created_at) if current is not None else None
+        record_timestamp = record.updated_at or record.created_at
+        if current_timestamp is None or record_timestamp >= current_timestamp:
+            latest[record.queue_entry_id] = record
+    return list(latest.values())
+
+
+def _build_human_review_queue_summary(
+    queue_records: list[HumanReviewQueueRecord],
+) -> dict:
+    latest_records = _latest_human_review_queue_records(queue_records)
+    if not latest_records:
+        return {
+            "latest_run_id": None,
+            "total_entries": 0,
+            "counts_by_status": {},
+            "pending_candidate_ids": [],
+            "entries": [],
+        }
+
+    latest_records.sort(
+        key=lambda record: (record.updated_at or record.created_at, record.candidate_id),
+        reverse=True,
+    )
+    counts_by_status: Counter[str] = Counter(record.status for record in latest_records)
+    latest_record = latest_records[0]
+    return {
+        "latest_run_id": latest_record.source_run_id,
+        "total_entries": len(latest_records),
+        "counts_by_status": dict(sorted(counts_by_status.items())),
+        "pending_candidate_ids": [
+            record.candidate_id
+            for record in latest_records
+            if record.status == HumanReviewQueueStatus.PENDING
+        ],
+        "entries": [record.model_dump(mode="json") for record in latest_records[:10]],
+    }
+
+
+def _build_human_review_summary(
+    review_decisions: list[HumanReviewDecision],
+) -> dict:
+    if not review_decisions:
+        return {
+            "latest_run_id": None,
+            "total_decisions": 0,
+            "counts_by_decision": {},
+            "counts_by_to_stage": {},
+            "approved_candidate_ids": [],
+            "held_candidate_ids": [],
+            "rejected_candidate_ids": [],
+        }
+
+    latest_record = max(review_decisions, key=lambda record: record.reviewed_at)
+    latest_run_id = latest_record.source_run_id
+    latest_run_records = [
+        record
+        for record in review_decisions
+        if record.source_run_id == latest_run_id
+    ]
+    decision_counts: Counter[str] = Counter(record.decision for record in latest_run_records)
+    target_stage_counts: Counter[str] = Counter(record.to_stage for record in latest_run_records)
+    return {
+        "latest_run_id": latest_run_id,
+        "total_decisions": len(latest_run_records),
+        "counts_by_decision": dict(sorted(decision_counts.items())),
+        "counts_by_to_stage": dict(sorted(target_stage_counts.items())),
+        "approved_candidate_ids": [
+            record.candidate_id
+            for record in latest_run_records
+            if record.decision == HumanReviewDecisionKind.APPROVE
+        ],
+        "held_candidate_ids": [
+            record.candidate_id
+            for record in latest_run_records
+            if record.decision == HumanReviewDecisionKind.HOLD
+        ],
+        "rejected_candidate_ids": [
+            record.candidate_id
+            for record in latest_run_records
+            if record.decision == HumanReviewDecisionKind.REJECT
+        ],
+    }
+
+
 def _latest_submission_ready_records(
     records: list[SubmissionReadyCandidateRecord],
 ) -> list[SubmissionReadyCandidateRecord]:
@@ -795,8 +1063,17 @@ def _latest_submission_ready_records(
 
 def _build_submission_ready_inventory_summary(
     records: list[SubmissionReadyCandidateRecord],
+    candidate_stage_records: list[CandidateStageRecord] | None = None,
 ) -> dict:
     latest_records = _latest_submission_ready_records(records)
+    if candidate_stage_records is not None:
+        latest_stage_records = _latest_candidate_stage_records(candidate_stage_records)
+        latest_records = [
+            record
+            for record in latest_records
+            if latest_stage_records.get(record.candidate_id) is not None
+            and latest_stage_records[record.candidate_id].stage == CandidateLifecycleStage.SUBMISSION_READY
+        ]
     if not latest_records:
         return {
             "latest_run_id": None,
@@ -939,6 +1216,82 @@ def _build_submission_ready_inventory_records(
     return records
 
 
+def _build_human_review_stage_records(
+    *,
+    run_id: str,
+    hypothesis: HypothesisSpec,
+    blueprint: SignalBlueprint,
+    review_result,
+) -> list[CandidateStageRecord]:
+    records: list[CandidateStageRecord] = []
+    for outcome in review_result.outcomes:
+        note = f"human review decision: {outcome.review_decision.decision}"
+        if outcome.review_decision.reasons:
+            note = f"{note}; {'; '.join(outcome.review_decision.reasons[:2])}"
+        records.append(
+            CandidateStageRecord(
+                stage_record_id=(
+                    f"stage.{run_id}.{outcome.submission_ready.candidate.candidate_id}."
+                    f"{outcome.review_decision.to_stage}"
+                ),
+                candidate_id=outcome.submission_ready.candidate.candidate_id,
+                hypothesis_id=hypothesis.hypothesis_id,
+                blueprint_id=blueprint.blueprint_id,
+                family=hypothesis.family,
+                stage=outcome.review_decision.to_stage,
+                source_run_id=run_id,
+                recorded_at=outcome.review_decision.reviewed_at,
+                notes=note[:240],
+            )
+        )
+    return records
+
+
+def _build_resolved_human_review_queue_records(
+    *,
+    run_id: str,
+    pending_queue_records: list[HumanReviewQueueRecord],
+    review_result,
+) -> list[HumanReviewQueueRecord]:
+    pending_by_candidate_id = {
+        record.candidate_id: record
+        for record in pending_queue_records
+    }
+    queue_status_map = {
+        HumanReviewDecisionKind.APPROVE: HumanReviewQueueStatus.APPROVED,
+        HumanReviewDecisionKind.HOLD: HumanReviewQueueStatus.HELD,
+        HumanReviewDecisionKind.REJECT: HumanReviewQueueStatus.REJECTED,
+    }
+    records: list[HumanReviewQueueRecord] = []
+    for outcome in review_result.outcomes:
+        pending_record = pending_by_candidate_id[outcome.submission_ready.candidate.candidate_id]
+        decision = HumanReviewDecisionKind(outcome.review_decision.decision)
+        records.append(
+            HumanReviewQueueRecord(
+                queue_record_id=(
+                    "review_queue_update."
+                    f"{run_id}.{pending_record.candidate_id}.{decision.value}"
+                ),
+                queue_entry_id=pending_record.queue_entry_id,
+                inventory_record_id=pending_record.inventory_record_id,
+                candidate_id=pending_record.candidate_id,
+                hypothesis_id=pending_record.hypothesis_id,
+                blueprint_id=pending_record.blueprint_id,
+                family=pending_record.family,
+                submission_ready_source_run_id=pending_record.submission_ready_source_run_id,
+                status=queue_status_map[decision],
+                source_run_id=run_id,
+                priority=pending_record.priority,
+                reviewer=outcome.review_decision.reviewer,
+                decision_id=outcome.review_decision.decision_id,
+                created_at=pending_record.created_at,
+                updated_at=outcome.review_decision.reviewed_at,
+                notes=outcome.review_decision.notes,
+            )
+        )
+    return records
+
+
 def _build_agenda_queue_records(
     *,
     run_id: str,
@@ -1035,6 +1388,8 @@ def _build_status_summary(root_dir: str | Path) -> dict:
     learner_summaries = state_ledger.load_family_learner_summaries()
     validation_backlog_entries = state_ledger.load_validation_backlog_entries()
     submission_ready_records = state_ledger.load_submission_ready_records()
+    human_review_queue_records = state_ledger.load_human_review_queue_records()
+    human_review_decisions = state_ledger.load_human_review_decisions()
     latest_validation_backlog_entries = _latest_validation_backlog_entries(validation_backlog_entries)
     validation_records = _load_validation_records(artifacts_root, run_state_records)
     robust_promotion_records = _load_robust_promotion_records(artifacts_root, run_state_records)
@@ -1152,7 +1507,12 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         "validation_summary": _build_validation_summary(validation_records),
         "validation_matrix": _build_validation_matrix_summary(validation_records),
         "robust_promotion_summary": _build_robust_promotion_summary(robust_promotion_records),
-        "submission_ready_inventory": _build_submission_ready_inventory_summary(submission_ready_records),
+        "submission_ready_inventory": _build_submission_ready_inventory_summary(
+            submission_ready_records,
+            candidate_stage_records=candidate_stage_records,
+        ),
+        "human_review_queue": _build_human_review_queue_summary(human_review_queue_records),
+        "human_review_summary": _build_human_review_summary(human_review_decisions),
         "agenda_queue": _build_agenda_queue_summary(agenda_queue_records),
         "candidate_stage_counts": _build_stage_counts(candidate_stage_records),
         "recent_candidate_flow_24h": {
@@ -1413,6 +1773,26 @@ def build_parser() -> argparse.ArgumentParser:
     promote_parser.add_argument("--source-run-id", default=None)
     promote_parser.add_argument("--candidate-id", action="append", default=None)
     promote_parser.add_argument("--out", default=None)
+
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Apply a manual human review decision to submission-ready candidates from a prior promote run",
+    )
+    review_parser.add_argument("--artifacts-dir", default="artifacts")
+    review_parser.add_argument("--source-run-id", default=None)
+    review_parser.add_argument("--candidate-id", action="append", default=None)
+    review_parser.add_argument(
+        "--decision",
+        choices=[
+            HumanReviewDecisionKind.APPROVE.value,
+            HumanReviewDecisionKind.HOLD.value,
+            HumanReviewDecisionKind.REJECT.value,
+        ],
+        required=True,
+    )
+    review_parser.add_argument("--reviewer", default="manual_reviewer")
+    review_parser.add_argument("--note", default=None)
+    review_parser.add_argument("--out", default=None)
 
     status_parser = subparsers.add_parser("status", help="Summarize local artifact and state ledgers")
     status_parser.add_argument("--artifacts-dir", default="artifacts")
@@ -1860,6 +2240,19 @@ def main(argv: list[str] | None = None) -> int:
                 result,
                 agenda=agenda,
             )
+            submission_ready_inventory_records = _build_submission_ready_inventory_records(
+                run_id=run_id,
+                hypothesis=hypothesis,
+                blueprint=blueprint,
+                promotion_result=result,
+            )
+            pending_review_queue_records = _build_pending_human_review_queue_records(
+                submission_ready_inventory_records
+            )
+            artifact_ledger.write_review_queue_records(
+                run_id,
+                pending_review_queue_records,
+            )
             state_ledger.append_candidate_stage_records(
                 _build_submission_ready_stage_records(
                     run_id=run_id,
@@ -1868,17 +2261,12 @@ def main(argv: list[str] | None = None) -> int:
                     promotion_result=result,
                 )
             )
-            state_ledger.append_submission_ready_records(
-                _build_submission_ready_inventory_records(
-                    run_id=run_id,
-                    hypothesis=hypothesis,
-                    blueprint=blueprint,
-                    promotion_result=result,
-                )
-            )
+            state_ledger.append_submission_ready_records(submission_ready_inventory_records)
+            state_ledger.append_human_review_queue_records(pending_review_queue_records)
+            candidate_stage_records = state_ledger.load_candidate_stage_records()
             analytics_bundle = _build_family_analytics_bundle(
                 args.artifacts_dir,
-                state_ledger.load_candidate_stage_records(),
+                candidate_stage_records,
             )
             family_stats = analytics_bundle.family_stats
             learner_summaries = analytics_bundle.learner_summaries
@@ -1901,10 +2289,18 @@ def main(argv: list[str] | None = None) -> int:
                 "run_id": run_id,
                 "source_validate_run_id": source_validate_run_id,
                 "submission_ready_candidate_ids": result.promoted_candidate_ids,
+                "queued_review_candidate_ids": [
+                    record.candidate_id
+                    for record in pending_review_queue_records
+                ],
                 "artifact_run_dir": str(artifact_run_dir),
                 "state_dir": str(state_ledger.state_directory()),
                 "submission_ready_inventory": _build_submission_ready_inventory_summary(
-                    state_ledger.load_submission_ready_records()
+                    state_ledger.load_submission_ready_records(),
+                    candidate_stage_records=candidate_stage_records,
+                ),
+                "human_review_queue": _build_human_review_queue_summary(
+                    state_ledger.load_human_review_queue_records()
                 ),
             }
             _write_output(payload, args.out)
@@ -1915,6 +2311,131 @@ def main(argv: list[str] | None = None) -> int:
                     RunStateRecord(
                         run_id=run_id,
                         run_kind=RunKind.PROMOTE,
+                        status=RunLifecycleStatus.FAILED,
+                        started_at=started_at,
+                        completed_at=_utc_now(),
+                        error_message=str(exc)[:300],
+                    )
+                ]
+            )
+            raise
+
+    if args.command == "review":
+        state_ledger = LocalFileStateLedger(args.artifacts_dir)
+        try:
+            source_submission_ready_run_id = _resolve_review_source_run_id(
+                state_ledger,
+                args.source_run_id,
+            )
+            agenda, hypothesis, blueprint, submission_ready_records, pending_queue_records = _load_review_inputs(
+                args.artifacts_dir,
+                state_ledger,
+                source_submission_ready_run_id,
+                args.candidate_id,
+            )
+        except ValueError as exc:
+            parser.exit(status=2, message=f"{exc}\n")
+
+        run_id = _build_run_id("review", hypothesis.family)
+        started_at = _utc_now()
+        state_ledger.append_run_state_records(
+            [
+                RunStateRecord(
+                    run_id=run_id,
+                    run_kind=RunKind.REVIEW,
+                    status=RunLifecycleStatus.STARTED,
+                    started_at=started_at,
+                )
+            ]
+        )
+        try:
+            result = _build_human_review_workflow().run(
+                source_run_id=run_id,
+                submission_ready_source_run_id=source_submission_ready_run_id,
+                hypothesis=hypothesis,
+                blueprint=blueprint,
+                submission_ready_records=submission_ready_records,
+                reviewer=args.reviewer,
+                decision=HumanReviewDecisionKind(args.decision),
+                reviewed_at=started_at,
+                notes=args.note,
+            )
+            resolved_queue_records = _build_resolved_human_review_queue_records(
+                run_id=run_id,
+                pending_queue_records=pending_queue_records,
+                review_result=result,
+            )
+            artifact_ledger = LocalFileArtifactLedger(args.artifacts_dir)
+            artifact_run_dir = artifact_ledger.write_human_review_result(
+                run_id,
+                result,
+                queue_records=resolved_queue_records,
+                agenda=agenda,
+            )
+            state_ledger.append_candidate_stage_records(
+                _build_human_review_stage_records(
+                    run_id=run_id,
+                    hypothesis=hypothesis,
+                    blueprint=blueprint,
+                    review_result=result,
+                )
+            )
+            state_ledger.append_human_review_queue_records(resolved_queue_records)
+            state_ledger.append_human_review_decisions(
+                [outcome.review_decision for outcome in result.outcomes]
+            )
+            candidate_stage_records = state_ledger.load_candidate_stage_records()
+            analytics_bundle = _build_family_analytics_bundle(
+                args.artifacts_dir,
+                candidate_stage_records,
+            )
+            family_stats = analytics_bundle.family_stats
+            learner_summaries = analytics_bundle.learner_summaries
+            state_ledger.write_family_stats(family_stats)
+            state_ledger.write_family_learner_summaries(learner_summaries)
+            completed_at = _utc_now()
+            state_ledger.append_run_state_records(
+                [
+                    RunStateRecord(
+                        run_id=run_id,
+                        run_kind=RunKind.REVIEW,
+                        status=RunLifecycleStatus.COMPLETED,
+                        started_at=started_at,
+                        completed_at=completed_at,
+                        candidate_count=len(result.reviewed_candidate_ids),
+                    )
+                ]
+            )
+            payload = {
+                "run_id": run_id,
+                "source_submission_ready_run_id": source_submission_ready_run_id,
+                "decision": HumanReviewDecisionKind(result.decision).value,
+                "reviewer": result.reviewer,
+                "reviewed_candidate_ids": result.reviewed_candidate_ids,
+                "approved_candidate_ids": result.approved_candidate_ids,
+                "held_candidate_ids": result.held_candidate_ids,
+                "rejected_candidate_ids": result.rejected_candidate_ids,
+                "artifact_run_dir": str(artifact_run_dir),
+                "state_dir": str(state_ledger.state_directory()),
+                "submission_ready_inventory": _build_submission_ready_inventory_summary(
+                    state_ledger.load_submission_ready_records(),
+                    candidate_stage_records=candidate_stage_records,
+                ),
+                "human_review_queue": _build_human_review_queue_summary(
+                    state_ledger.load_human_review_queue_records()
+                ),
+                "human_review_summary": _build_human_review_summary(
+                    state_ledger.load_human_review_decisions()
+                ),
+            }
+            _write_output(payload, args.out)
+            return 0
+        except Exception as exc:
+            state_ledger.append_run_state_records(
+                [
+                    RunStateRecord(
+                        run_id=run_id,
+                        run_kind=RunKind.REVIEW,
                         status=RunLifecycleStatus.FAILED,
                         started_at=started_at,
                         completed_at=_utc_now(),
