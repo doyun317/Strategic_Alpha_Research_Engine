@@ -6,6 +6,7 @@ from strategic_alpha_engine.application.contracts import (
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
+    SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.domain.enums import (
@@ -122,6 +123,21 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
             created_at=datetime(2026, 1, 15, 15, 10, tzinfo=timezone.utc),
         )
     ]
+    submission_ready_records = [
+        SubmissionReadyCandidateRecord(
+            inventory_record_id="submission_ready.promote.001.cand.quality_deterioration.001",
+            candidate_id="cand.quality_deterioration.001",
+            hypothesis_id="hyp.quality_deterioration.001",
+            blueprint_id="bp.quality_deterioration.001",
+            family="quality_deterioration",
+            source_run_id="promote.quality_deterioration.001",
+            robust_source_run_id="validate.quality_deterioration.001",
+            promotion_id="promotion.promote.quality_deterioration.001.cand.quality_deterioration.001.submission_ready",
+            validation_ids=["validation.validate.quality_deterioration.001.cand.quality_deterioration.001.stage_b.P1Y0M0D"],
+            requested_periods=["P1Y0M0D"],
+            promoted_at=datetime(2026, 1, 15, 15, 11, tzinfo=timezone.utc),
+        )
+    ]
 
     candidate_path = ledger.append_candidate_stage_records(candidate_records)
     run_path = ledger.append_run_state_records(run_records)
@@ -129,6 +145,7 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
     family_path = ledger.write_family_stats(family_stats)
     learner_path = ledger.write_family_learner_summaries(learner_summaries)
     backlog_path = ledger.append_validation_backlog_entries(backlog_entries)
+    submission_ready_path = ledger.append_submission_ready_records(submission_ready_records)
 
     assert candidate_path.name == "candidate_stages.jsonl"
     assert run_path.name == "run_states.jsonl"
@@ -136,6 +153,7 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
     assert family_path.name == "family_stats.json"
     assert learner_path.name == "family_learner_summaries.json"
     assert backlog_path.name == "validation_backlog.jsonl"
+    assert submission_ready_path.name == "submission_ready_candidates.jsonl"
 
     loaded_candidates = ledger.load_candidate_stage_records()
     loaded_runs = ledger.load_run_state_records()
@@ -143,6 +161,7 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
     loaded_family_stats = ledger.load_family_stats()
     loaded_learner_summaries = ledger.load_family_learner_summaries()
     loaded_backlog = ledger.load_validation_backlog_entries()
+    loaded_submission_ready = ledger.load_submission_ready_records()
 
     assert [record.stage for record in loaded_candidates] == [
         CandidateLifecycleStage.CRITIQUE_PASSED,
@@ -154,6 +173,7 @@ def test_local_file_state_ledger_appends_and_loads_state_manifests(tmp_path):
     assert loaded_family_stats[0].median_stage_a_sharpe == 1.21
     assert loaded_learner_summaries[0].stage_a_pass_rate == 1.0
     assert loaded_backlog[0].requested_period == "P3Y0M0D"
+    assert loaded_submission_ready[0].source_run_id == "promote.quality_deterioration.001"
 
 
 def test_local_file_state_ledger_returns_empty_lists_for_missing_manifests(tmp_path):
@@ -165,3 +185,4 @@ def test_local_file_state_ledger_returns_empty_lists_for_missing_manifests(tmp_p
     assert ledger.load_family_stats() == []
     assert ledger.load_family_learner_summaries() == []
     assert ledger.load_validation_backlog_entries() == []
+    assert ledger.load_submission_ready_records() == []

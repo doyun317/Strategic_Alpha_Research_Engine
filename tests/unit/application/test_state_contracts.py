@@ -9,6 +9,7 @@ from strategic_alpha_engine.application.contracts import (
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
+    SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.domain.enums import (
@@ -134,3 +135,24 @@ def test_agenda_queue_record_accepts_timezone_aware_timestamp():
     )
 
     assert record.selected_for_execution is True
+
+
+def test_submission_ready_candidate_record_accepts_timezone_aware_timestamp():
+    record = SubmissionReadyCandidateRecord(
+        inventory_record_id="submission_ready.promote.001.cand.001",
+        candidate_id="cand.quality_deterioration.001",
+        hypothesis_id="hyp.quality_deterioration.001",
+        blueprint_id="bp.quality_deterioration.001",
+        family="quality_deterioration",
+        source_run_id="promote.quality_deterioration.001",
+        robust_source_run_id="validate.quality_deterioration.001",
+        promotion_id="promotion.promote.quality_deterioration.001.cand.quality_deterioration.001.submission_ready",
+        validation_ids=[
+            "validation.validate.quality_deterioration.001.cand.quality_deterioration.001.stage_b.P1Y0M0D",
+        ],
+        requested_periods=["P1Y0M0D"],
+        promoted_at=datetime(2026, 1, 15, 15, 5, tzinfo=timezone.utc),
+        notes="promoted after manual review",
+    )
+
+    assert record.candidate_id == "cand.quality_deterioration.001"

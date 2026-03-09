@@ -198,3 +198,33 @@ class ValidationBacklogEntry(EngineModel):
         if self.updated_at is not None and self.updated_at < self.created_at:
             raise ValueError("updated_at must be greater than or equal to created_at")
         return self
+
+
+class SubmissionReadyCandidateRecord(EngineModel):
+    inventory_record_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    candidate_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    hypothesis_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    blueprint_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    family: ResearchFamily
+    source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    robust_source_run_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    promotion_id: str = Field(pattern=IDENTIFIER_PATTERN)
+    validation_ids: list[str] = Field(default_factory=list, max_length=32)
+    requested_periods: list[str] = Field(default_factory=list, max_length=16)
+    promoted_at: datetime
+    notes: str | None = Field(default=None, max_length=240)
+
+    @field_validator("validation_ids", "requested_periods")
+    @classmethod
+    def validate_unique_lists(cls, value: list[str], info) -> list[str]:
+        validated = ensure_unique_sequence(value, info.field_name)
+        if info.field_name == "requested_periods":
+            for period in validated:
+                if not _TEST_PERIOD_PATTERN.fullmatch(period) or not any(char.isdigit() for char in period):
+                    raise ValueError("requested_periods must use ISO-8601 period shapes like P3Y0M0D")
+        return validated
+
+    @field_validator("promoted_at")
+    @classmethod
+    def validate_promoted_at(cls, value: datetime) -> datetime:
+        return _require_timezone_aware(value, "promoted_at")

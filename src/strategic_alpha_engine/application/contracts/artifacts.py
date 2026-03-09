@@ -148,3 +148,21 @@ class ValidationPromotionArtifactRecord(EngineModel):
         if self.promotion.blueprint_id != self.candidate.blueprint_id:
             raise ValueError("promotion.blueprint_id must match candidate.blueprint_id")
         return self
+
+
+class SubmissionReadyArtifactRecord(EngineModel):
+    candidate: ExpressionCandidate
+    robust_promotion: ValidationPromotionArtifactRecord
+    submission_promotion: PromotionDecision
+
+    @model_validator(mode="after")
+    def validate_lineage(self) -> "SubmissionReadyArtifactRecord":
+        if self.robust_promotion.candidate.candidate_id != self.candidate.candidate_id:
+            raise ValueError("robust_promotion candidate must match candidate")
+        if self.submission_promotion.candidate_id != self.candidate.candidate_id:
+            raise ValueError("submission_promotion.candidate_id must match candidate.candidate_id")
+        if self.submission_promotion.hypothesis_id != self.candidate.hypothesis_id:
+            raise ValueError("submission_promotion.hypothesis_id must match candidate.hypothesis_id")
+        if self.submission_promotion.blueprint_id != self.candidate.blueprint_id:
+            raise ValueError("submission_promotion.blueprint_id must match candidate.blueprint_id")
+        return self
