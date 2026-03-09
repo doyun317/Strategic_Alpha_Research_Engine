@@ -61,6 +61,7 @@ artifacts/
       promotion.jsonl
   state/
     candidate_stages.jsonl
+    run_states.jsonl
     family_stats.json
     validation_backlog.jsonl
   reports/
@@ -111,7 +112,7 @@ git checkout -b phase2/2-3-static-validator
 | 2-7 | `phase2/2-7-brain-client-contract` | 9.3, 11.8 | Brain adapter contract와 fake adapter 추가 | fake submit/poll/fetch 테스트 가능 | `completed` |
 | 2-8 | `phase2/2-8-simulation-orchestrator` | 11.8 | critique 통과 후보 simulation orchestration 구현 | submit/poll/result 흐름 테스트 통과 | `completed` |
 | 2-9 | `phase2/2-9-local-artifact-ledger` | 12.2 Artifact Store | run artifact를 로컬 JSON/JSONL로 저장 | run_id 기준 artifact 저장 확인 | `completed` |
-| 2-10 | `phase2/2-10-local-state-ledger` | 12.3 State Store | candidate stage / run state / family stats를 로컬 manifest로 저장 | 상태 전이 기록과 재로딩 확인 | `planned` |
+| 2-10 | `phase2/2-10-local-state-ledger` | 12.3 State Store | candidate stage / run state / family stats를 로컬 manifest로 저장 | 상태 전이 기록과 재로딩 확인 | `completed` |
 | 2-11 | `phase2/2-11-simulate-and-status-cli` | 14.3, 14.8 실행 모드 | `simulate`, `status` CLI 추가 | simulate 실행과 status summary 출력 가능 | `planned` |
 | 2-12 | `phase2/2-12-evaluation-record-and-stage-a-promotion` | 11.9, 11.10 | `EvaluationRecord`와 Stage A 승격 구현 | `draft -> critique_passed -> sim_passed` 전이 확인 | `planned` |
 | 3-1 | `phase3/3-1-family-stats-ledger` | Phase 3, 11.11 | family 성과 집계 구조 추가 | family stats 갱신 테스트 통과 | `planned` |
@@ -189,31 +190,30 @@ git checkout -b phase2/2-3-static-validator
 - 다음 브랜치가 현재 브랜치 결과물을 안정적으로 재사용할 수 있는가
 - 로컬 파일 저장 포맷이 사람이 직접 읽을 수 있는가
 
-## 9. 현재 작업 범위: 2-10
+## 9. 현재 작업 범위: 2-11
 
 다음 브랜치에서 처리할 내용:
 
-- candidate stage manifest 추가
-- run state manifest 추가
-- family stats / validation backlog 기본 manifest 추가
+- `simulate` CLI 추가
+- `status` CLI 추가
+- artifact/state ledger를 읽는 status summary 출력 고정
 - 관련 단위 테스트 추가
 
 이번 브랜치에서 일부러 하지 않는 내용:
 
 - 실제 HTTP 구현
-- CLI 연결
-- promotion
+- promotion decision
 - family stats 학습 로직
 
-## 10. `2-10` 권장 커밋 단위
+## 10. `2-11` 권장 커밋 단위
 
-1. state ledger contract 추가
-2. JSON/JSONL manifest writer 구현
+1. `simulate` command 연결
+2. `status` summary command 추가
 3. 테스트 추가
 4. 문서 상태 업데이트
 
-## 11. `2-11` 진입 조건
+## 11. `2-12` 진입 조건
 
 - `pytest` 통과
-- candidate/run 상태 전이 기록 확인
-- manifest를 다시 로드했을 때 상태가 유지됨
+- CLI에서 simulate 실행과 status summary 출력 확인
+- artifact/state ledger 경로를 읽어 상태 집계가 가능함
