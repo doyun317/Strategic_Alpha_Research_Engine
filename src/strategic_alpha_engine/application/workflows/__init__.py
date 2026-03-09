@@ -3,6 +3,11 @@ from strategic_alpha_engine.application.workflows.evaluate_stage_a import (
     StageAEvaluationResult,
     StageAEvaluationWorkflow,
 )
+from strategic_alpha_engine.application.workflows.promote_robust_candidates import (
+    RobustPromotionOutcome,
+    RobustPromotionResult,
+    RobustPromotionWorkflow,
+)
 from strategic_alpha_engine.application.workflows.plan import PlanResult, PlanWorkflow
 from strategic_alpha_engine.application.workflows.research_once import (
     ResearchOnceResult,
@@ -39,6 +44,9 @@ __all__ = [
     "PlanWorkflow",
     "ResearchOnceResult",
     "ResearchOnceWorkflow",
+    "RobustPromotionOutcome",
+    "RobustPromotionResult",
+    "RobustPromotionWorkflow",
     "SimulationCandidateExecution",
     "SimulationExecutionPolicy",
     "SimulationOrchestratorResult",

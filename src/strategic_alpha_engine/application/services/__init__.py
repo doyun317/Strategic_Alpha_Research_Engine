@@ -27,6 +27,11 @@ from strategic_alpha_engine.application.services.rule_based_stage_a import (
     RuleBasedStageAPromotionDecider,
     StageAThresholds,
 )
+from strategic_alpha_engine.application.services.rule_based_robust_promotion import (
+    RobustPromotionThresholds,
+    RuleBasedRobustPromotionDecider,
+    candidate_signature,
+)
 from strategic_alpha_engine.application.services.rule_based_validation import (
     RuleBasedValidationRunner,
 )
@@ -58,9 +63,11 @@ __all__ = [
     "ResearchAgendaManager",
     "SearchPolicyLearner",
     "RuleBasedStrategicCritic",
+    "RuleBasedRobustPromotionDecider",
     "RuleBasedStageAEvaluator",
     "RuleBasedStageAPromotionDecider",
     "RuleBasedValidationRunner",
+    "RobustPromotionThresholds",
     "SkeletonCandidateSynthesizer",
     "StateLedger",
     "StageAEvaluator",
@@ -70,4 +77,5 @@ __all__ = [
     "StaticHypothesisPlanner",
     "StrategicCritic",
     "ValidationRunner",
+    "candidate_signature",
 ]

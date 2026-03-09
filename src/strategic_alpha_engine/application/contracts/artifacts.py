@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationPollResult,
@@ -12,7 +12,9 @@ from strategic_alpha_engine.domain.critique_report import CritiqueReport
 from strategic_alpha_engine.domain.evaluation import EvaluationRecord
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
 from strategic_alpha_engine.domain.promotion import PromotionDecision
+from strategic_alpha_engine.domain.common import ensure_unique_sequence
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
+from strategic_alpha_engine.domain.enums import ValidationStage
 from strategic_alpha_engine.domain.static_validation import StaticValidationReport
 from strategic_alpha_engine.domain.validation import ValidationRecord
 
@@ -117,4 +119,32 @@ class ValidationArtifactRecord(EngineModel):
             raise ValueError("validation.hypothesis_id must match candidate.hypothesis_id")
         if self.validation.blueprint_id != self.candidate.blueprint_id:
             raise ValueError("validation.blueprint_id must match candidate.blueprint_id")
+        return self
+
+
+class ValidationPromotionArtifactRecord(EngineModel):
+    candidate: ExpressionCandidate
+    validation_stage: ValidationStage
+    requested_periods: list[str] = Field(default_factory=list)
+    validation_ids: list[str] = Field(default_factory=list)
+    passing_periods: list[str] = Field(default_factory=list)
+    failing_periods: list[str] = Field(default_factory=list)
+    aggregate_pass_decision: bool
+    promotion: PromotionDecision
+
+    @field_validator("requested_periods", "validation_ids", "passing_periods", "failing_periods")
+    @classmethod
+    def validate_unique_lists(cls, value: list[str], info) -> list[str]:
+        return ensure_unique_sequence(value, info.field_name)
+
+    @model_validator(mode="after")
+    def validate_lineage(self) -> "ValidationPromotionArtifactRecord":
+        if not self.validation_ids:
+            raise ValueError("validation_ids must not be empty")
+        if self.promotion.candidate_id != self.candidate.candidate_id:
+            raise ValueError("promotion.candidate_id must match candidate.candidate_id")
+        if self.promotion.hypothesis_id != self.candidate.hypothesis_id:
+            raise ValueError("promotion.hypothesis_id must match candidate.hypothesis_id")
+        if self.promotion.blueprint_id != self.candidate.blueprint_id:
+            raise ValueError("promotion.blueprint_id must match candidate.blueprint_id")
         return self
