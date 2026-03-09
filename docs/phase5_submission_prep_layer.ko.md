@@ -92,6 +92,7 @@
 
 - `5-1 submission-ready ledger`: 완료
 - `5-2 human review queue`: 완료
+- `5-3 submission packet generation`: 완료
 - 현재까지 구현된 내용:
   - `robust_candidate -> submission_ready` 승격 workflow
   - `promote` CLI
@@ -100,10 +101,13 @@
   - promote 시점의 pending `human_review_queue`
   - `review` CLI와 `human_review_decisions.jsonl`
   - `status`의 `human_review_queue`, `human_review_summary` 요약
-- 다음 작업:
-  - `5-3 submission packet generation`
-  - review 결과를 포함한 self-contained packet 구성
-  - packet CLI와 runbook 정리
+  - `packet` CLI와 `submission_packets.jsonl`
+  - candidate별 `packets/<candidate_id>.json`
+  - `status`의 `submission_packet_summary`
+  - review / packet runbook 문서
+- 현재 단계 상태:
+  - Phase 5 계획 범위는 완료
+  - 외부 제출 자동화는 다음 별도 단계로 남겨둠
 
 ## 6. 구현 원칙
 
