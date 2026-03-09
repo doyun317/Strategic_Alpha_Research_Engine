@@ -104,7 +104,7 @@ git checkout -b phase2/2-3-static-validator
 | --- | --- | --- | --- | --- | --- |
 | 2-1 | `phase2/2-1-config-and-runtime-model` | Phase 0 foundation | runtime settings 모델과 env 로딩 구조 확정 | 설정 로딩, validation, CLI 확인 | `completed` |
 | 2-2 | `phase2/2-2-metadata-catalog` | 11.3 Metadata Intelligence Layer | field/operator metadata catalog 추가 | catalog load, filtering, lookup 테스트 통과 | `completed` |
-| 2-3 | `phase2/2-3-static-validator` | 11.7 Static Validator | compiler-safe validator 추가 | invalid expression 차단 테스트 통과 | `planned` |
+| 2-3 | `phase2/2-3-static-validator` | 11.7 Static Validator | compiler-safe validator 추가 | invalid expression 차단 테스트 통과 | `in_progress` |
 | 2-4 | `phase2/2-4-prompt-assets-and-golden-samples` | 15, 16 Prompt Strategy | planner/blueprint/critic prompt 파일 분리와 golden sample 테스트 기초 추가 | prompt asset 로딩 및 golden sample 테스트 통과 | `planned` |
 | 2-5 | `phase2/2-5-plan-and-synthesize-cli` | 14.1, 14.2 실행 모드 | `plan`, `synthesize` CLI 추가 | agenda -> hypothesis -> blueprint / blueprint -> candidate+critique 분리 실행 가능 | `planned` |
 | 2-6 | `phase2/2-6-simulation-domain` | 10.6, 11.8 | immutable `SimulationRequest`, `SimulationRun` 도메인 추가 | request/run validation 테스트 통과 | `planned` |
@@ -189,7 +189,7 @@ git checkout -b phase2/2-3-static-validator
 - 다음 브랜치가 현재 브랜치 결과물을 안정적으로 재사용할 수 있는가
 - 로컬 파일 저장 포맷이 사람이 직접 읽을 수 있는가
 
-## 9. 다음 작업 범위: 2-3
+## 9. 현재 작업 범위: 2-3
 
 다음 브랜치에서 처리할 내용:
 
