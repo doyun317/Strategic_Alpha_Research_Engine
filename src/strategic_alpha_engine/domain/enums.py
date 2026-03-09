@@ -175,6 +175,7 @@ class RunKind(str, Enum):
     VALIDATE = "validate"
     PROMOTE = "promote"
     REVIEW = "review"
+    PACKET = "packet"
     STATUS = "status"
     RESEARCH_LOOP = "research_loop"
 

@@ -8,11 +8,15 @@ from pathlib import Path
 
 from strategic_alpha_engine.application.contracts import (
     AgendaQueueRecord,
+    CandidateArtifactRecord,
     CandidateStageRecord,
+    EvaluationArtifactRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     HumanReviewQueueRecord,
+    PromotionArtifactRecord,
     RunStateRecord,
+    SimulationArtifactRecord,
     SubmissionReadyArtifactRecord,
     SubmissionReadyCandidateRecord,
     ValidationPromotionArtifactRecord,
@@ -39,6 +43,8 @@ from strategic_alpha_engine.application.workflows import (
     HumanReviewWorkflow,
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
+    SubmissionPacketBundle,
+    SubmissionPacketWorkflow,
     SubmissionReadyPromotionWorkflow,
     ResearchOnceWorkflow,
     RobustPromotionWorkflow,
@@ -195,6 +201,10 @@ def _build_submission_ready_workflow() -> SubmissionReadyPromotionWorkflow:
 
 def _build_human_review_workflow() -> HumanReviewWorkflow:
     return HumanReviewWorkflow()
+
+
+def _build_submission_packet_workflow() -> SubmissionPacketWorkflow:
+    return SubmissionPacketWorkflow()
 
 
 def _load_synthesize_inputs(
@@ -835,6 +845,250 @@ def _load_review_inputs(
     )
 
 
+def _resolve_packet_source_run_id(
+    state_ledger: LocalFileStateLedger,
+    explicit_run_id: str | None,
+) -> str:
+    if explicit_run_id:
+        return explicit_run_id
+
+    latest_run_records = list(_latest_run_state_records(state_ledger.load_run_state_records()).values())
+    latest_run_records.sort(
+        key=lambda record: record.completed_at or record.started_at,
+        reverse=True,
+    )
+    for record in latest_run_records:
+        if record.run_kind == RunKind.REVIEW:
+            return record.run_id
+    raise ValueError("No review run is available for submission packet generation")
+
+
+def _load_candidate_artifact_map_for_run(
+    root_dir: str | Path,
+    candidate_source_run_id: str,
+) -> dict[str, CandidateArtifactRecord]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    run_dir = artifacts_root / "runs" / candidate_source_run_id
+    candidate_fields = set(ExpressionCandidate.model_fields)
+    candidates = {
+        payload["candidate_id"]: ExpressionCandidate(
+            **{
+                key: value
+                for key, value in payload.items()
+                if key in candidate_fields
+            }
+        )
+        for payload in _read_jsonl_file(run_dir / "candidates.jsonl")
+    }
+    validations = {
+        payload["candidate_id"]: StaticValidationReport(**payload)
+        for payload in _read_jsonl_file(run_dir / "validations.jsonl")
+        if "validator_name" in payload
+    }
+    critiques = {
+        payload["candidate_id"]: CritiqueReport(**payload)
+        for payload in _read_jsonl_file(run_dir / "critiques.jsonl")
+    }
+    records: dict[str, CandidateArtifactRecord] = {}
+    for candidate_id, candidate in candidates.items():
+        validation = validations.get(candidate_id)
+        if validation is None:
+            continue
+        records[candidate_id] = CandidateArtifactRecord(
+            candidate=candidate,
+            validation=validation,
+            critique=critiques.get(candidate_id),
+        )
+    return records
+
+
+def _load_simulation_artifact_map_for_run(
+    root_dir: str | Path,
+    candidate_source_run_id: str,
+) -> dict[str, SimulationArtifactRecord]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    run_dir = artifacts_root / "runs" / candidate_source_run_id
+    return {
+        payload["simulation_request"]["candidate_id"]: SimulationArtifactRecord(**payload)
+        for payload in _read_jsonl_file(run_dir / "simulations.jsonl")
+    }
+
+
+def _load_stage_a_evaluation_artifact_map_for_run(
+    root_dir: str | Path,
+    candidate_source_run_id: str,
+) -> dict[str, EvaluationArtifactRecord]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    run_dir = artifacts_root / "runs" / candidate_source_run_id
+    return {
+        payload["evaluation"]["candidate_id"]: EvaluationArtifactRecord(**payload)
+        for payload in _read_jsonl_file(run_dir / "evaluations.jsonl")
+        if payload.get("evaluation", {}).get("evaluation_stage") == "stage_a"
+    }
+
+
+def _load_stage_a_promotion_artifact_map_for_run(
+    root_dir: str | Path,
+    candidate_source_run_id: str,
+) -> dict[str, PromotionArtifactRecord]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    run_dir = artifacts_root / "runs" / candidate_source_run_id
+    return {
+        payload["promotion"]["candidate_id"]: PromotionArtifactRecord(**payload)
+        for payload in _read_jsonl_file(run_dir / "promotion.jsonl")
+    }
+
+
+def _load_validation_records_for_run(
+    root_dir: str | Path,
+    validation_run_id: str,
+) -> dict[str, ValidationRecord]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    run_dir = artifacts_root / "runs" / validation_run_id
+    return {
+        payload["validation"]["validation_id"]: ValidationRecord(**payload["validation"])
+        for payload in _read_jsonl_file(run_dir / "validations.jsonl")
+        if "validation" in payload
+    }
+
+
+def _load_submission_packet_payloads(
+    root_dir: str | Path,
+    run_state_records: list[RunStateRecord],
+) -> list[dict]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    payloads: list[dict] = []
+    for record in _latest_run_state_records(run_state_records).values():
+        if record.run_kind != RunKind.PACKET:
+            continue
+        payloads.extend(
+            _read_jsonl_file(
+                artifacts_root / "runs" / record.run_id / "submission_packets.jsonl"
+            )
+        )
+    return payloads
+
+
+def _load_packet_inputs(
+    root_dir: str | Path,
+    state_ledger: LocalFileStateLedger,
+    source_review_run_id: str,
+    candidate_ids: list[str] | None,
+) -> tuple[ResearchAgenda | None, HypothesisSpec, SignalBlueprint, list[SubmissionPacketBundle]]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    context = _load_run_context(artifacts_root, source_review_run_id)
+    hypothesis_payload = context["hypothesis"]
+    blueprint_payload = context["blueprint"]
+    if hypothesis_payload is None or blueprint_payload is None:
+        raise ValueError("packet source run must have hypothesis and blueprint context")
+
+    latest_stage_records = _latest_candidate_stage_records(state_ledger.load_candidate_stage_records())
+    latest_queue_records = {
+        record.queue_entry_id: record
+        for record in _latest_human_review_queue_records(
+            state_ledger.load_human_review_queue_records()
+        )
+    }
+    requested_candidate_ids = set(candidate_ids or [])
+    approved_review_decisions = [
+        decision
+        for decision in state_ledger.load_human_review_decisions()
+        if decision.source_run_id == source_review_run_id
+        and HumanReviewDecisionKind(decision.decision) == HumanReviewDecisionKind.APPROVE
+        and latest_stage_records.get(decision.candidate_id) is not None
+        and latest_stage_records[decision.candidate_id].stage == CandidateLifecycleStage.SUBMISSION_READY
+        and latest_queue_records.get(decision.queue_entry_id) is not None
+        and latest_queue_records[decision.queue_entry_id].status == HumanReviewQueueStatus.APPROVED
+        and (not requested_candidate_ids or decision.candidate_id in requested_candidate_ids)
+    ]
+    approved_review_decisions.sort(key=lambda decision: decision.candidate_id)
+    if not approved_review_decisions:
+        raise ValueError("No approved submission_ready candidates are available for packet generation")
+
+    submission_ready_cache: dict[str, dict[str, SubmissionReadyArtifactRecord]] = {}
+    candidate_artifact_cache: dict[str, dict[str, CandidateArtifactRecord]] = {}
+    simulation_artifact_cache: dict[str, dict[str, SimulationArtifactRecord]] = {}
+    evaluation_artifact_cache: dict[str, dict[str, EvaluationArtifactRecord]] = {}
+    stage_a_promotion_cache: dict[str, dict[str, PromotionArtifactRecord]] = {}
+    validation_record_cache: dict[str, dict[str, ValidationRecord]] = {}
+    bundles: list[SubmissionPacketBundle] = []
+
+    for review_decision in approved_review_decisions:
+        submission_ready_run_id = review_decision.submission_ready_source_run_id
+        submission_ready_map = submission_ready_cache.setdefault(
+            submission_ready_run_id,
+            {
+                record.candidate.candidate_id: record
+                for record in _load_submission_ready_artifact_records(
+                    artifacts_root,
+                    submission_ready_run_id,
+                )
+            },
+        )
+        submission_ready_record = submission_ready_map.get(review_decision.candidate_id)
+        if submission_ready_record is None:
+            raise ValueError("submission_ready artifact is missing for an approved review candidate")
+
+        validation_run_id = submission_ready_record.robust_promotion.promotion.source_run_id
+        validation_records_by_id = validation_record_cache.setdefault(
+            validation_run_id,
+            _load_validation_records_for_run(artifacts_root, validation_run_id),
+        )
+        validation_records = [
+            validation_records_by_id[validation_id]
+            for validation_id in submission_ready_record.robust_promotion.validation_ids
+            if validation_id in validation_records_by_id
+        ]
+        if len(validation_records) != len(submission_ready_record.robust_promotion.validation_ids):
+            raise ValueError("validation records are incomplete for an approved review candidate")
+        if not validation_records:
+            raise ValueError("validation records are missing for an approved review candidate")
+        candidate_source_run_id = validation_records[0].candidate_source_run_id
+
+        candidate_artifact_map = candidate_artifact_cache.setdefault(
+            candidate_source_run_id,
+            _load_candidate_artifact_map_for_run(artifacts_root, candidate_source_run_id),
+        )
+        simulation_artifact_map = simulation_artifact_cache.setdefault(
+            candidate_source_run_id,
+            _load_simulation_artifact_map_for_run(artifacts_root, candidate_source_run_id),
+        )
+        evaluation_artifact_map = evaluation_artifact_cache.setdefault(
+            candidate_source_run_id,
+            _load_stage_a_evaluation_artifact_map_for_run(artifacts_root, candidate_source_run_id),
+        )
+        stage_a_promotion_map = stage_a_promotion_cache.setdefault(
+            candidate_source_run_id,
+            _load_stage_a_promotion_artifact_map_for_run(artifacts_root, candidate_source_run_id),
+        )
+        candidate_artifact = candidate_artifact_map.get(review_decision.candidate_id)
+        simulation_artifact = simulation_artifact_map.get(review_decision.candidate_id)
+        evaluation_artifact = evaluation_artifact_map.get(review_decision.candidate_id)
+        stage_a_promotion = stage_a_promotion_map.get(review_decision.candidate_id)
+        if None in (candidate_artifact, simulation_artifact, evaluation_artifact, stage_a_promotion):
+            raise ValueError("source simulate artifacts are incomplete for an approved review candidate")
+
+        bundles.append(
+            SubmissionPacketBundle(
+                candidate_artifact=candidate_artifact,
+                simulation_artifact=simulation_artifact,
+                evaluation_artifact=evaluation_artifact,
+                stage_a_promotion=stage_a_promotion,
+                submission_ready=submission_ready_record,
+                validation_records=validation_records,
+                review_decision=review_decision,
+            )
+        )
+
+    agenda = ResearchAgenda(**context["agenda"]) if context["agenda"] is not None else None
+    return (
+        agenda,
+        HypothesisSpec(**hypothesis_payload),
+        SignalBlueprint(**blueprint_payload),
+        bundles,
+    )
+
+
 def _build_validation_summary(validation_records: list[ValidationRecord]) -> dict:
     if not validation_records:
         return {
@@ -1046,6 +1300,70 @@ def _build_human_review_summary(
             record.candidate_id
             for record in latest_run_records
             if record.decision == HumanReviewDecisionKind.REJECT
+        ],
+    }
+
+
+def _build_submission_packet_summary(packet_payloads: list[dict]) -> dict:
+    if not packet_payloads:
+        return {
+            "latest_run_id": None,
+            "latest_generated_at": None,
+            "review_source_run_id": None,
+            "submission_ready_source_run_ids": [],
+            "total_packets": 0,
+            "counts_by_family": {},
+            "candidate_ids": [],
+            "packet_ids": [],
+            "entries": [],
+        }
+
+    latest_payload = max(
+        packet_payloads,
+        key=lambda payload: payload.get("generated_at", ""),
+    )
+    latest_run_id = latest_payload["source_run_id"]
+    latest_run_payloads = [
+        payload
+        for payload in packet_payloads
+        if payload.get("source_run_id") == latest_run_id
+    ]
+    latest_run_payloads.sort(
+        key=lambda payload: payload["candidate_artifact"]["candidate"]["candidate_id"]
+    )
+    counts_by_family: Counter[str] = Counter(
+        (payload.get("hypothesis") or {}).get("family")
+        for payload in latest_run_payloads
+        if (payload.get("hypothesis") or {}).get("family")
+    )
+    submission_ready_source_run_ids: list[str] = []
+    for payload in latest_run_payloads:
+        source_run_id = payload.get("submission_ready_source_run_id")
+        if source_run_id and source_run_id not in submission_ready_source_run_ids:
+            submission_ready_source_run_ids.append(source_run_id)
+
+    return {
+        "latest_run_id": latest_run_id,
+        "latest_generated_at": latest_payload.get("generated_at"),
+        "review_source_run_id": latest_payload.get("review_source_run_id"),
+        "submission_ready_source_run_ids": submission_ready_source_run_ids,
+        "total_packets": len(latest_run_payloads),
+        "counts_by_family": dict(sorted(counts_by_family.items())),
+        "candidate_ids": [
+            payload["candidate_artifact"]["candidate"]["candidate_id"]
+            for payload in latest_run_payloads
+        ],
+        "packet_ids": [payload["packet_id"] for payload in latest_run_payloads],
+        "entries": [
+            {
+                "packet_id": payload["packet_id"],
+                "candidate_id": payload["candidate_artifact"]["candidate"]["candidate_id"],
+                "family": (payload.get("hypothesis") or {}).get("family"),
+                "review_source_run_id": payload.get("review_source_run_id"),
+                "submission_ready_source_run_id": payload.get("submission_ready_source_run_id"),
+                "generated_at": payload.get("generated_at"),
+            }
+            for payload in latest_run_payloads[:10]
         ],
     }
 
@@ -1393,6 +1711,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
     latest_validation_backlog_entries = _latest_validation_backlog_entries(validation_backlog_entries)
     validation_records = _load_validation_records(artifacts_root, run_state_records)
     robust_promotion_records = _load_robust_promotion_records(artifacts_root, run_state_records)
+    submission_packet_payloads = _load_submission_packet_payloads(artifacts_root, run_state_records)
 
     if not family_stats or not learner_summaries:
         analytics_bundle = _build_family_analytics_bundle(artifacts_root, candidate_stage_records)
@@ -1513,6 +1832,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         ),
         "human_review_queue": _build_human_review_queue_summary(human_review_queue_records),
         "human_review_summary": _build_human_review_summary(human_review_decisions),
+        "submission_packet_summary": _build_submission_packet_summary(submission_packet_payloads),
         "agenda_queue": _build_agenda_queue_summary(agenda_queue_records),
         "candidate_stage_counts": _build_stage_counts(candidate_stage_records),
         "recent_candidate_flow_24h": {
@@ -1793,6 +2113,15 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--reviewer", default="manual_reviewer")
     review_parser.add_argument("--note", default=None)
     review_parser.add_argument("--out", default=None)
+
+    packet_parser = subparsers.add_parser(
+        "packet",
+        help="Generate self-contained submission packets from approved human review decisions",
+    )
+    packet_parser.add_argument("--artifacts-dir", default="artifacts")
+    packet_parser.add_argument("--source-run-id", default=None)
+    packet_parser.add_argument("--candidate-id", action="append", default=None)
+    packet_parser.add_argument("--out", default=None)
 
     status_parser = subparsers.add_parser("status", help="Summarize local artifact and state ledgers")
     status_parser.add_argument("--artifacts-dir", default="artifacts")
@@ -2436,6 +2765,93 @@ def main(argv: list[str] | None = None) -> int:
                     RunStateRecord(
                         run_id=run_id,
                         run_kind=RunKind.REVIEW,
+                        status=RunLifecycleStatus.FAILED,
+                        started_at=started_at,
+                        completed_at=_utc_now(),
+                        error_message=str(exc)[:300],
+                    )
+                ]
+            )
+            raise
+
+    if args.command == "packet":
+        state_ledger = LocalFileStateLedger(args.artifacts_dir)
+        try:
+            source_review_run_id = _resolve_packet_source_run_id(
+                state_ledger,
+                args.source_run_id,
+            )
+            agenda, hypothesis, blueprint, bundles = _load_packet_inputs(
+                args.artifacts_dir,
+                state_ledger,
+                source_review_run_id,
+                args.candidate_id,
+            )
+        except ValueError as exc:
+            parser.exit(status=2, message=f"{exc}\n")
+
+        run_id = _build_run_id("packet", hypothesis.family)
+        started_at = _utc_now()
+        state_ledger.append_run_state_records(
+            [
+                RunStateRecord(
+                    run_id=run_id,
+                    run_kind=RunKind.PACKET,
+                    status=RunLifecycleStatus.STARTED,
+                    started_at=started_at,
+                )
+            ]
+        )
+        try:
+            result = _build_submission_packet_workflow().run(
+                source_run_id=run_id,
+                review_source_run_id=source_review_run_id,
+                agenda=agenda,
+                hypothesis=hypothesis,
+                blueprint=blueprint,
+                bundles=bundles,
+                generated_at=started_at,
+            )
+            artifact_ledger = LocalFileArtifactLedger(args.artifacts_dir)
+            artifact_run_dir = artifact_ledger.write_submission_packet_result(
+                run_id,
+                result,
+            )
+            completed_at = _utc_now()
+            state_ledger.append_run_state_records(
+                [
+                    RunStateRecord(
+                        run_id=run_id,
+                        run_kind=RunKind.PACKET,
+                        status=RunLifecycleStatus.COMPLETED,
+                        started_at=started_at,
+                        completed_at=completed_at,
+                        candidate_count=len(result.candidate_ids),
+                    )
+                ]
+            )
+            payload = {
+                "run_id": run_id,
+                "source_review_run_id": source_review_run_id,
+                "candidate_ids": result.candidate_ids,
+                "packet_ids": [packet.packet_id for packet in result.packets],
+                "artifact_run_dir": str(artifact_run_dir),
+                "state_dir": str(state_ledger.state_directory()),
+                "submission_packet_summary": _build_submission_packet_summary(
+                    _load_submission_packet_payloads(
+                        args.artifacts_dir,
+                        state_ledger.load_run_state_records(),
+                    )
+                ),
+            }
+            _write_output(payload, args.out)
+            return 0
+        except Exception as exc:
+            state_ledger.append_run_state_records(
+                [
+                    RunStateRecord(
+                        run_id=run_id,
+                        run_kind=RunKind.PACKET,
                         status=RunLifecycleStatus.FAILED,
                         started_at=started_at,
                         completed_at=_utc_now(),

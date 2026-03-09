@@ -3,6 +3,11 @@ from strategic_alpha_engine.application.workflows.evaluate_stage_a import (
     StageAEvaluationResult,
     StageAEvaluationWorkflow,
 )
+from strategic_alpha_engine.application.workflows.generate_submission_packet import (
+    SubmissionPacketBundle,
+    SubmissionPacketResult,
+    SubmissionPacketWorkflow,
+)
 from strategic_alpha_engine.application.workflows.promote_robust_candidates import (
     RobustPromotionOutcome,
     RobustPromotionResult,
@@ -67,6 +72,9 @@ __all__ = [
     "StageACandidateOutcome",
     "StageAEvaluationResult",
     "StageAEvaluationWorkflow",
+    "SubmissionPacketBundle",
+    "SubmissionPacketResult",
+    "SubmissionPacketWorkflow",
     "SubmissionReadyPromotionOutcome",
     "SubmissionReadyPromotionResult",
     "SubmissionReadyPromotionWorkflow",
