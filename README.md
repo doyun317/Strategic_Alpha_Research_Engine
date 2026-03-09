@@ -28,6 +28,8 @@ Current status:
   - [docs/phase4_robust_validation.ko.md](./docs/phase4_robust_validation.ko.md)
 - Phase 5 scope:
   - [docs/phase5_submission_prep_layer.ko.md](./docs/phase5_submission_prep_layer.ko.md)
+- Operational readiness checklist:
+  - [docs/operational_readiness_checklist.ko.md](./docs/operational_readiness_checklist.ko.md)
 - Submission packet runbook:
   - [docs/submission_packet_runbook.ko.md](./docs/submission_packet_runbook.ko.md)
 
@@ -107,6 +109,10 @@ python -m strategic_alpha_engine validate --artifacts-dir artifacts
 python -m strategic_alpha_engine promote --artifacts-dir artifacts
 python -m strategic_alpha_engine review --artifacts-dir artifacts --decision approve
 python -m strategic_alpha_engine packet --artifacts-dir artifacts
+
+# use the real WorldQuant Brain client instead of the fake adapter
+# this requires settings/brain.env with SAE_BRAIN_BASE_URL, SAE_BRAIN_USERNAME, SAE_BRAIN_PASSWORD
+python -m strategic_alpha_engine simulate --artifacts-dir artifacts --brain-provider worldquant
 
 # optionally run a single explicit validation window instead of the default
 # stage_b multi-period set: P1Y0M0D, P3Y0M0D, P5Y0M0D
@@ -201,6 +207,7 @@ Current implementation includes:
 - `packet` CLI with self-contained submission packet artifacts for approved candidates
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
+- optional real WorldQuant Brain simulation client behind `--brain-provider worldquant`
 - local agenda queue ledger and bounded `research-loop` execution mode
 - artifact persistence for `evaluations.jsonl`, `promotion.jsonl`, and `robust_promotion.jsonl`
 - validation backlog tracking and validation summary in `status`

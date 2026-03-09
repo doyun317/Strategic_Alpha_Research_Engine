@@ -1,3 +1,4 @@
 from strategic_alpha_engine.infrastructure.brain.fake_client import FakeBrainSimulationClient
+from strategic_alpha_engine.infrastructure.brain.worldquant_client import WorldQuantBrainSimulationClient
 
-__all__ = ["FakeBrainSimulationClient"]
+__all__ = ["FakeBrainSimulationClient", "WorldQuantBrainSimulationClient"]
