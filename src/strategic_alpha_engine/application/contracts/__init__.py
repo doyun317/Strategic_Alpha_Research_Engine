@@ -1,5 +1,7 @@
 from strategic_alpha_engine.application.contracts.artifacts import (
     CandidateArtifactRecord,
+    EvaluationArtifactRecord,
+    PromotionArtifactRecord,
     SimulationArtifactRecord,
 )
 from strategic_alpha_engine.application.contracts.simulation import (
@@ -32,9 +34,11 @@ __all__ = [
     "BlueprintBuilderPromptInput",
     "BlueprintBuilderPromptOutput",
     "FieldCatalogEntry",
+    "EvaluationArtifactRecord",
     "FamilyStatsSnapshot",
     "HypothesisPlannerPromptInput",
     "HypothesisPlannerPromptOutput",
+    "PromotionArtifactRecord",
     "RunStateRecord",
     "SimulationArtifactRecord",
     "StrategicCriticPromptInput",

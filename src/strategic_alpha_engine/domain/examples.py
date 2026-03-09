@@ -2,19 +2,23 @@ from datetime import datetime, timezone
 
 from strategic_alpha_engine.domain.enums import (
     ExpectedDirection,
+    EvaluationStage,
     FieldClass,
     FieldRole,
     NormalizationKind,
     NormalizationTarget,
+    PromotionDecisionKind,
     ResearchFamily,
     ResearchHorizon,
     RiskControlKind,
     TransformKind,
     UpdateCadence,
 )
+from strategic_alpha_engine.domain.evaluation import EvaluationRecord
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.critique_report import CritiqueIssue, CritiqueReport
+from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
 from strategic_alpha_engine.domain.signal_blueprint import (
@@ -240,3 +244,47 @@ def build_sample_simulation_run() -> SimulationRun:
         provider_run_id="brain.run.quality_deterioration.001",
         submitted_at=submitted_at,
     ).mark_running().mark_succeeded(completed_at=completed_at)
+
+
+def build_sample_evaluation_record() -> EvaluationRecord:
+    request = build_sample_simulation_request()
+    run = build_sample_simulation_run()
+    return EvaluationRecord(
+        evaluation_id="eval.quality_deterioration.001.stage_a",
+        candidate_id=request.candidate_id,
+        hypothesis_id=request.hypothesis_id,
+        blueprint_id=request.blueprint_id,
+        simulation_request_id=request.simulation_request_id,
+        simulation_run_id=run.simulation_run_id,
+        source_run_id="simulate.quality_deterioration.001",
+        evaluation_stage=EvaluationStage.STAGE_A,
+        period=request.test_period,
+        status=run.status,
+        sharpe=1.21,
+        fitness=1.05,
+        turnover=0.17,
+        returns=0.14,
+        drawdown=0.06,
+        checks=["delay_ok", "neutralization_ok"],
+        grade="A",
+        pass_decision=True,
+        reasons=["meets_stage_a_thresholds"],
+        evaluated_at=datetime(2026, 1, 15, 14, 42, tzinfo=timezone.utc),
+    )
+
+
+def build_sample_promotion_decision() -> PromotionDecision:
+    evaluation = build_sample_evaluation_record()
+    return PromotionDecision(
+        promotion_id="promotion.quality_deterioration.001.stage_a",
+        candidate_id=evaluation.candidate_id,
+        hypothesis_id=evaluation.hypothesis_id,
+        blueprint_id=evaluation.blueprint_id,
+        evaluation_id=evaluation.evaluation_id,
+        source_run_id=evaluation.source_run_id,
+        from_stage="critique_passed",
+        to_stage="sim_passed",
+        decision=PromotionDecisionKind.PROMOTE,
+        reasons=["stage_a_passed"],
+        decided_at=evaluation.evaluated_at,
+    )

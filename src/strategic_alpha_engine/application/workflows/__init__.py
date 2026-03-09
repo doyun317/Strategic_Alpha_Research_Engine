@@ -1,3 +1,8 @@
+from strategic_alpha_engine.application.workflows.evaluate_stage_a import (
+    StageACandidateOutcome,
+    StageAEvaluationResult,
+    StageAEvaluationWorkflow,
+)
 from strategic_alpha_engine.application.workflows.plan import PlanResult, PlanWorkflow
 from strategic_alpha_engine.application.workflows.research_once import (
     ResearchOnceResult,
@@ -25,6 +30,9 @@ __all__ = [
     "SimulationExecutionPolicy",
     "SimulationOrchestratorResult",
     "SimulationOrchestratorWorkflow",
+    "StageACandidateOutcome",
+    "StageAEvaluationResult",
+    "StageAEvaluationWorkflow",
     "SynthesizeResult",
     "SynthesizeWorkflow",
 ]
