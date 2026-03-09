@@ -92,7 +92,8 @@ python -m strategic_alpha_engine synthesize --plan-in tmp/plan.json --out tmp/sy
 Run simulation and inspect local status:
 
 ```bash
-# current simulate command uses the fake Brain adapter and persists local ledgers
+# current simulate command uses the fake Brain adapter, evaluates Stage A,
+# and persists local ledgers plus evaluation/promotion artifacts
 python -m strategic_alpha_engine simulate --artifacts-dir artifacts
 python -m strategic_alpha_engine status --artifacts-dir artifacts
 
@@ -143,8 +144,10 @@ Current implementation includes:
 - immutable simulation request / run domain models
 - Brain simulation client contract and fake adapter
 - simulation orchestrator workflow for critique-passed candidates
+- Stage A evaluation records and rule-based promotion decisions after simulation
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
+- artifact persistence for `evaluations.jsonl` and `promotion.jsonl`
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic
