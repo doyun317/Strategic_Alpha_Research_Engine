@@ -98,6 +98,12 @@
 2. `phase3/3-2-search-policy-learner`
 3. `phase3/3-3-agenda-manager-and-research-loop`
 
+현재 진행 상태:
+
+- `3-1 family stats ledger`: 완료
+- `3-2 search policy learner`: 완료
+- 다음 작업: `3-3 agenda manager and research-loop`
+
 ## 6. 구현 원칙
 
 ### 6.1 식 단위보다 family 단위 우선
