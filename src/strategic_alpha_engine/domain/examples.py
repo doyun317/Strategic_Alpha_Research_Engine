@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from strategic_alpha_engine.domain.enums import (
     ExpectedDirection,
     FieldClass,
@@ -14,6 +16,7 @@ from strategic_alpha_engine.domain.expression_candidate import ExpressionCandida
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.critique_report import CritiqueIssue, CritiqueReport
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
+from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
 from strategic_alpha_engine.domain.signal_blueprint import (
     FieldSelection,
     NormalizationSpec,
@@ -209,3 +212,31 @@ def build_sample_critique_report() -> CritiqueReport:
         repair_suggestions=["Optionally add a confirmation term from price momentum."],
         tags=["sample", "quality"],
     )
+
+
+def build_sample_simulation_request() -> SimulationRequest:
+    candidate = build_sample_expression_candidate()
+    return SimulationRequest(
+        simulation_request_id="simreq.quality_deterioration.001",
+        candidate_id=candidate.candidate_id,
+        hypothesis_id=candidate.hypothesis_id,
+        blueprint_id=candidate.blueprint_id,
+        expression=candidate.expression,
+        region="USA",
+        universe="TOP3000",
+        delay=1,
+        neutralization="subindustry",
+        test_period="P1Y0M0D",
+    )
+
+
+def build_sample_simulation_run() -> SimulationRun:
+    submitted_at = datetime(2026, 1, 15, 14, 30, tzinfo=timezone.utc)
+    completed_at = datetime(2026, 1, 15, 14, 42, tzinfo=timezone.utc)
+    return SimulationRun.from_request(
+        simulation_run_id="simrun.quality_deterioration.001",
+        request=build_sample_simulation_request(),
+    ).mark_submitted(
+        provider_run_id="brain.run.quality_deterioration.001",
+        submitted_at=submitted_at,
+    ).mark_running().mark_succeeded(completed_at=completed_at)
