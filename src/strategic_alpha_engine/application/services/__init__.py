@@ -4,6 +4,7 @@ from strategic_alpha_engine.application.services.interfaces import (
     BlueprintBuilder,
     CandidateSynthesizer,
     HypothesisPlanner,
+    StateLedger,
     StaticValidator,
     StrategicCritic,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "MetadataBackedStaticValidator",
     "RuleBasedStrategicCritic",
     "SkeletonCandidateSynthesizer",
+    "StateLedger",
     "StaticValidator",
     "StaticBlueprintBuilder",
     "StaticHypothesisPlanner",

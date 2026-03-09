@@ -126,3 +126,36 @@ class SimulationStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     TIMED_OUT = "timed_out"
+
+
+class CandidateLifecycleStage(str, Enum):
+    DRAFT = "draft"
+    CRITIQUE_PASSED = "critique_passed"
+    SIM_PASSED = "sim_passed"
+    ROBUST_CANDIDATE = "robust_candidate"
+    SUBMISSION_READY = "submission_ready"
+    REJECTED = "rejected"
+
+
+class RunKind(str, Enum):
+    PLAN = "plan"
+    SYNTHESIZE = "synthesize"
+    SIMULATE = "simulate"
+    RESEARCH_ONCE = "research_once"
+    VALIDATE = "validate"
+    PROMOTE = "promote"
+    STATUS = "status"
+    RESEARCH_LOOP = "research_loop"
+
+
+class RunLifecycleStatus(str, Enum):
+    STARTED = "started"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ValidationBacklogStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
