@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+settings/local.env
+settings/llm.env
+dist/
+build/
+*.egg-info/
+artifacts/
+logs/
+data/
+coverage.xml
+.coverage
