@@ -12,6 +12,7 @@ from strategic_alpha_engine.application.contracts import (
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
+    SubmissionReadyCandidateRecord,
     ValidationPromotionArtifactRecord,
     ValidationBacklogEntry,
 )
@@ -35,6 +36,7 @@ from strategic_alpha_engine.application.services import (
 from strategic_alpha_engine.application.workflows import (
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
+    SubmissionReadyPromotionWorkflow,
     ResearchOnceWorkflow,
     RobustPromotionWorkflow,
     SimulationExecutionPolicy,
@@ -179,6 +181,10 @@ def _build_robust_promotion_workflow() -> RobustPromotionWorkflow:
     return RobustPromotionWorkflow(
         promotion_decider=RuleBasedRobustPromotionDecider(),
     )
+
+
+def _build_submission_ready_workflow() -> SubmissionReadyPromotionWorkflow:
+    return SubmissionReadyPromotionWorkflow()
 
 
 def _load_synthesize_inputs(
@@ -385,6 +391,24 @@ def _resolve_validate_source_run_id(
     raise ValueError("No simulate or research_loop run is available for validation")
 
 
+def _resolve_promote_source_run_id(
+    state_ledger: LocalFileStateLedger,
+    explicit_run_id: str | None,
+) -> str:
+    if explicit_run_id:
+        return explicit_run_id
+
+    latest_run_records = list(_latest_run_state_records(state_ledger.load_run_state_records()).values())
+    latest_run_records.sort(
+        key=lambda record: record.completed_at or record.started_at,
+        reverse=True,
+    )
+    for record in latest_run_records:
+        if record.run_kind == RunKind.VALIDATE:
+            return record.run_id
+    raise ValueError("No validate run is available for submission-ready promotion")
+
+
 def _load_validate_inputs(
     root_dir: str | Path,
     state_ledger: LocalFileStateLedger,
@@ -588,6 +612,52 @@ def _load_robust_promotion_records(
     return promotion_records
 
 
+def _load_promote_inputs(
+    root_dir: str | Path,
+    state_ledger: LocalFileStateLedger,
+    source_validate_run_id: str,
+    candidate_ids: list[str] | None,
+) -> tuple[ResearchAgenda | None, HypothesisSpec, SignalBlueprint, list[ValidationPromotionArtifactRecord]]:
+    artifacts_root = Path(root_dir).expanduser().resolve()
+    context = _load_run_context(artifacts_root, source_validate_run_id)
+    hypothesis_payload = context["hypothesis"]
+    blueprint_payload = context["blueprint"]
+    if hypothesis_payload is None or blueprint_payload is None:
+        raise ValueError("promotion source run must have hypothesis and blueprint context")
+
+    latest_stage_records = _latest_candidate_stage_records(state_ledger.load_candidate_stage_records())
+    eligible_candidate_ids = {
+        candidate_id
+        for candidate_id, record in latest_stage_records.items()
+        if record.stage == CandidateLifecycleStage.ROBUST_CANDIDATE and record.source_run_id == source_validate_run_id
+    }
+    requested_candidate_ids = set(candidate_ids or [])
+    if requested_candidate_ids:
+        eligible_candidate_ids &= requested_candidate_ids
+
+    robust_records = [
+        record
+        for record in _load_robust_promotion_records(
+            artifacts_root,
+            state_ledger.load_run_state_records(),
+        )
+        if record.promotion.source_run_id == source_validate_run_id
+        and record.promotion.to_stage == CandidateLifecycleStage.ROBUST_CANDIDATE
+        and record.candidate.candidate_id in eligible_candidate_ids
+    ]
+    robust_records.sort(key=lambda record: record.candidate.candidate_id)
+    if not robust_records:
+        raise ValueError("No robust_candidate records are available for submission-ready promotion")
+
+    agenda = ResearchAgenda(**context["agenda"]) if context["agenda"] is not None else None
+    return (
+        agenda,
+        HypothesisSpec(**hypothesis_payload),
+        SignalBlueprint(**blueprint_payload),
+        robust_records,
+    )
+
+
 def _build_validation_summary(validation_records: list[ValidationRecord]) -> dict:
     if not validation_records:
         return {
@@ -712,6 +782,44 @@ def _build_robust_promotion_summary(
     }
 
 
+def _latest_submission_ready_records(
+    records: list[SubmissionReadyCandidateRecord],
+) -> list[SubmissionReadyCandidateRecord]:
+    latest: dict[str, SubmissionReadyCandidateRecord] = {}
+    for record in records:
+        current = latest.get(record.candidate_id)
+        if current is None or record.promoted_at >= current.promoted_at:
+            latest[record.candidate_id] = record
+    return list(latest.values())
+
+
+def _build_submission_ready_inventory_summary(
+    records: list[SubmissionReadyCandidateRecord],
+) -> dict:
+    latest_records = _latest_submission_ready_records(records)
+    if not latest_records:
+        return {
+            "latest_run_id": None,
+            "latest_promoted_at": None,
+            "total_candidates": 0,
+            "counts_by_family": {},
+            "candidate_ids": [],
+            "entries": [],
+        }
+
+    latest_records.sort(key=lambda record: (record.promoted_at, record.candidate_id), reverse=True)
+    counts_by_family: Counter[str] = Counter(record.family for record in latest_records)
+    latest_record = latest_records[0]
+    return {
+        "latest_run_id": latest_record.source_run_id,
+        "latest_promoted_at": latest_record.promoted_at.isoformat(),
+        "total_candidates": len(latest_records),
+        "counts_by_family": dict(sorted(counts_by_family.items())),
+        "candidate_ids": [record.candidate_id for record in latest_records],
+        "entries": [record.model_dump(mode="json") for record in latest_records[:10]],
+    }
+
+
 def _build_simulation_status_counts(simulation_result) -> dict[str, int]:
     counts = {
         status.value: 0
@@ -766,6 +874,66 @@ def _build_robust_candidate_stage_records(
                 source_run_id=run_id,
                 recorded_at=outcome.promotion.decided_at,
                 notes=note[:240],
+            )
+        )
+    return records
+
+
+def _build_submission_ready_stage_records(
+    *,
+    run_id: str,
+    hypothesis: HypothesisSpec,
+    blueprint: SignalBlueprint,
+    promotion_result,
+) -> list[CandidateStageRecord]:
+    records: list[CandidateStageRecord] = []
+    for outcome in promotion_result.outcomes:
+        note = "submission-ready promotion: promote"
+        if outcome.submission_promotion.reasons:
+            note = f"{note}; {'; '.join(outcome.submission_promotion.reasons[:2])}"
+        records.append(
+            CandidateStageRecord(
+                stage_record_id=(
+                    f"stage.{run_id}.{outcome.robust_promotion.candidate.candidate_id}."
+                    f"{outcome.submission_promotion.to_stage}"
+                ),
+                candidate_id=outcome.robust_promotion.candidate.candidate_id,
+                hypothesis_id=hypothesis.hypothesis_id,
+                blueprint_id=blueprint.blueprint_id,
+                family=hypothesis.family,
+                stage=outcome.submission_promotion.to_stage,
+                source_run_id=run_id,
+                recorded_at=outcome.submission_promotion.decided_at,
+                notes=note[:240],
+            )
+        )
+    return records
+
+
+def _build_submission_ready_inventory_records(
+    *,
+    run_id: str,
+    hypothesis: HypothesisSpec,
+    blueprint: SignalBlueprint,
+    promotion_result,
+) -> list[SubmissionReadyCandidateRecord]:
+    records: list[SubmissionReadyCandidateRecord] = []
+    for outcome in promotion_result.outcomes:
+        robust_record = outcome.robust_promotion
+        records.append(
+            SubmissionReadyCandidateRecord(
+                inventory_record_id=f"submission_ready.{run_id}.{robust_record.candidate.candidate_id}",
+                candidate_id=robust_record.candidate.candidate_id,
+                hypothesis_id=hypothesis.hypothesis_id,
+                blueprint_id=blueprint.blueprint_id,
+                family=hypothesis.family,
+                source_run_id=run_id,
+                robust_source_run_id=promotion_result.robust_source_run_id,
+                promotion_id=outcome.submission_promotion.promotion_id,
+                validation_ids=robust_record.validation_ids,
+                requested_periods=robust_record.requested_periods,
+                promoted_at=outcome.submission_promotion.decided_at,
+                notes="manual promote CLI advanced candidate to submission_ready",
             )
         )
     return records
@@ -866,6 +1034,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
     family_stats = state_ledger.load_family_stats()
     learner_summaries = state_ledger.load_family_learner_summaries()
     validation_backlog_entries = state_ledger.load_validation_backlog_entries()
+    submission_ready_records = state_ledger.load_submission_ready_records()
     latest_validation_backlog_entries = _latest_validation_backlog_entries(validation_backlog_entries)
     validation_records = _load_validation_records(artifacts_root, run_state_records)
     robust_promotion_records = _load_robust_promotion_records(artifacts_root, run_state_records)
@@ -983,6 +1152,7 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         "validation_summary": _build_validation_summary(validation_records),
         "validation_matrix": _build_validation_matrix_summary(validation_records),
         "robust_promotion_summary": _build_robust_promotion_summary(robust_promotion_records),
+        "submission_ready_inventory": _build_submission_ready_inventory_summary(submission_ready_records),
         "agenda_queue": _build_agenda_queue_summary(agenda_queue_records),
         "candidate_stage_counts": _build_stage_counts(candidate_stage_records),
         "recent_candidate_flow_24h": {
@@ -1234,6 +1404,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.add_argument("--period", action="append", default=None)
     validate_parser.add_argument("--out", default=None)
+
+    promote_parser = subparsers.add_parser(
+        "promote",
+        help="Advance robust candidates from a prior validate run into the submission-ready pool",
+    )
+    promote_parser.add_argument("--artifacts-dir", default="artifacts")
+    promote_parser.add_argument("--source-run-id", default=None)
+    promote_parser.add_argument("--candidate-id", action="append", default=None)
+    promote_parser.add_argument("--out", default=None)
 
     status_parser = subparsers.add_parser("status", help="Summarize local artifact and state ledgers")
     status_parser.add_argument("--artifacts-dir", default="artifacts")
@@ -1632,6 +1811,113 @@ def main(argv: list[str] | None = None) -> int:
                         status=RunLifecycleStatus.FAILED,
                         started_at=started_at,
                         completed_at=cancelled_at,
+                        error_message=str(exc)[:300],
+                    )
+                ]
+            )
+            raise
+
+    if args.command == "promote":
+        state_ledger = LocalFileStateLedger(args.artifacts_dir)
+        try:
+            source_validate_run_id = _resolve_promote_source_run_id(
+                state_ledger,
+                args.source_run_id,
+            )
+            agenda, hypothesis, blueprint, robust_records = _load_promote_inputs(
+                args.artifacts_dir,
+                state_ledger,
+                source_validate_run_id,
+                args.candidate_id,
+            )
+        except ValueError as exc:
+            parser.exit(status=2, message=f"{exc}\n")
+
+        run_id = _build_run_id("promote", hypothesis.family)
+        started_at = _utc_now()
+        state_ledger.append_run_state_records(
+            [
+                RunStateRecord(
+                    run_id=run_id,
+                    run_kind=RunKind.PROMOTE,
+                    status=RunLifecycleStatus.STARTED,
+                    started_at=started_at,
+                )
+            ]
+        )
+        try:
+            result = _build_submission_ready_workflow().run(
+                source_run_id=run_id,
+                robust_source_run_id=source_validate_run_id,
+                hypothesis=hypothesis,
+                blueprint=blueprint,
+                robust_records=robust_records,
+                promoted_at=started_at,
+            )
+            artifact_ledger = LocalFileArtifactLedger(args.artifacts_dir)
+            artifact_run_dir = artifact_ledger.write_submission_ready_result(
+                run_id,
+                result,
+                agenda=agenda,
+            )
+            state_ledger.append_candidate_stage_records(
+                _build_submission_ready_stage_records(
+                    run_id=run_id,
+                    hypothesis=hypothesis,
+                    blueprint=blueprint,
+                    promotion_result=result,
+                )
+            )
+            state_ledger.append_submission_ready_records(
+                _build_submission_ready_inventory_records(
+                    run_id=run_id,
+                    hypothesis=hypothesis,
+                    blueprint=blueprint,
+                    promotion_result=result,
+                )
+            )
+            analytics_bundle = _build_family_analytics_bundle(
+                args.artifacts_dir,
+                state_ledger.load_candidate_stage_records(),
+            )
+            family_stats = analytics_bundle.family_stats
+            learner_summaries = analytics_bundle.learner_summaries
+            state_ledger.write_family_stats(family_stats)
+            state_ledger.write_family_learner_summaries(learner_summaries)
+            completed_at = _utc_now()
+            state_ledger.append_run_state_records(
+                [
+                    RunStateRecord(
+                        run_id=run_id,
+                        run_kind=RunKind.PROMOTE,
+                        status=RunLifecycleStatus.COMPLETED,
+                        started_at=started_at,
+                        completed_at=completed_at,
+                        candidate_count=len(result.promoted_candidate_ids),
+                    )
+                ]
+            )
+            payload = {
+                "run_id": run_id,
+                "source_validate_run_id": source_validate_run_id,
+                "submission_ready_candidate_ids": result.promoted_candidate_ids,
+                "artifact_run_dir": str(artifact_run_dir),
+                "state_dir": str(state_ledger.state_directory()),
+                "submission_ready_inventory": _build_submission_ready_inventory_summary(
+                    state_ledger.load_submission_ready_records()
+                ),
+            }
+            _write_output(payload, args.out)
+            return 0
+        except Exception as exc:
+            state_ledger.append_run_state_records(
+                [
+                    RunStateRecord(
+                        run_id=run_id,
+                        run_kind=RunKind.PROMOTE,
+                        status=RunLifecycleStatus.FAILED,
+                        started_at=started_at,
+                        completed_at=_utc_now(),
                         error_message=str(exc)[:300],
                     )
                 ]

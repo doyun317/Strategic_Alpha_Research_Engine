@@ -7,6 +7,7 @@ from strategic_alpha_engine.application.contracts import (
     CandidateArtifactRecord,
     EvaluationArtifactRecord,
     PromotionArtifactRecord,
+    SubmissionReadyArtifactRecord,
     SimulationArtifactRecord,
     ValidationArtifactRecord,
     ValidationPromotionArtifactRecord,
@@ -16,6 +17,10 @@ from strategic_alpha_engine.application.workflows.evaluate_stage_a import StageA
 from strategic_alpha_engine.application.workflows.promote_robust_candidates import (
     RobustPromotionOutcome,
     RobustPromotionResult,
+)
+from strategic_alpha_engine.application.workflows.promote_submission_ready import (
+    SubmissionReadyPromotionOutcome,
+    SubmissionReadyPromotionResult,
 )
 from strategic_alpha_engine.application.workflows.simulate import (
     SimulationCandidateExecution,
@@ -132,6 +137,18 @@ class LocalFileArtifactLedger:
         run_dir = self.run_directory(run_id)
         self._write_jsonl(
             run_dir / "robust_promotion.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
+    def write_submission_ready_records(
+        self,
+        run_id: str,
+        records: list[SubmissionReadyArtifactRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "submission_ready.jsonl",
             [record.model_dump(mode="json") for record in records],
         )
         return run_dir
@@ -262,6 +279,27 @@ class LocalFileArtifactLedger:
             ],
         )
 
+    def write_submission_ready_result(
+        self,
+        run_id: str,
+        result: SubmissionReadyPromotionResult,
+        *,
+        agenda: ResearchAgenda | None = None,
+    ) -> Path:
+        self.write_context(
+            run_id,
+            agenda=agenda,
+            hypothesis=result.hypothesis,
+            blueprint=result.blueprint,
+        )
+        return self.write_submission_ready_records(
+            run_id,
+            records=[
+                self._submission_ready_record_from_outcome(outcome)
+                for outcome in result.outcomes
+            ],
+        )
+
     def _candidate_record_from_evaluation(self, evaluation: CandidateEvaluation) -> CandidateArtifactRecord:
         return CandidateArtifactRecord(
             candidate=evaluation.candidate,
@@ -327,6 +365,16 @@ class LocalFileArtifactLedger:
             failing_periods=outcome.failing_periods,
             aggregate_pass_decision=outcome.aggregate_pass_decision,
             promotion=outcome.promotion,
+        )
+
+    def _submission_ready_record_from_outcome(
+        self,
+        outcome: SubmissionReadyPromotionOutcome,
+    ) -> SubmissionReadyArtifactRecord:
+        return SubmissionReadyArtifactRecord(
+            candidate=outcome.robust_promotion.candidate,
+            robust_promotion=outcome.robust_promotion,
+            submission_promotion=outcome.submission_promotion,
         )
 
     def _write_json(self, path: Path, payload: dict) -> None:

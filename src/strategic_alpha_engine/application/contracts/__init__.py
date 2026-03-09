@@ -2,6 +2,7 @@ from strategic_alpha_engine.application.contracts.artifacts import (
     CandidateArtifactRecord,
     EvaluationArtifactRecord,
     PromotionArtifactRecord,
+    SubmissionReadyArtifactRecord,
     SimulationArtifactRecord,
     ValidationArtifactRecord,
     ValidationPromotionArtifactRecord,
@@ -17,6 +18,7 @@ from strategic_alpha_engine.application.contracts.state import (
     CandidateStageRecord,
     FamilyStatsSnapshot,
     RunStateRecord,
+    SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.application.contracts.structured_generation import (
@@ -46,6 +48,8 @@ __all__ = [
     "HypothesisPlannerPromptOutput",
     "PromotionArtifactRecord",
     "RunStateRecord",
+    "SubmissionReadyArtifactRecord",
+    "SubmissionReadyCandidateRecord",
     "SimulationArtifactRecord",
     "StrategicCriticPromptInput",
     "StrategicCriticPromptOutput",

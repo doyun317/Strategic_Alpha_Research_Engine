@@ -7,6 +7,7 @@ from strategic_alpha_engine.application.contracts.artifacts import (
     CandidateArtifactRecord,
     EvaluationArtifactRecord,
     PromotionArtifactRecord,
+    SubmissionReadyArtifactRecord,
     SimulationArtifactRecord,
     ValidationArtifactRecord,
     ValidationPromotionArtifactRecord,
@@ -22,6 +23,7 @@ from strategic_alpha_engine.application.contracts.state import (
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
+    SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.domain.evaluation import EvaluationRecord
@@ -194,6 +196,12 @@ class ArtifactLedger(Protocol):
         records: list[ValidationPromotionArtifactRecord],
     ) -> Path: ...
 
+    def write_submission_ready_records(
+        self,
+        run_id: str,
+        records: list[SubmissionReadyArtifactRecord],
+    ) -> Path: ...
+
 
 class StateLedger(Protocol):
     def append_candidate_stage_records(self, records: list[CandidateStageRecord]) -> Path: ...
@@ -208,6 +216,8 @@ class StateLedger(Protocol):
 
     def append_validation_backlog_entries(self, entries: list[ValidationBacklogEntry]) -> Path: ...
 
+    def append_submission_ready_records(self, records: list[SubmissionReadyCandidateRecord]) -> Path: ...
+
     def load_candidate_stage_records(self) -> list[CandidateStageRecord]: ...
 
     def load_run_state_records(self) -> list[RunStateRecord]: ...
@@ -219,3 +229,5 @@ class StateLedger(Protocol):
     def load_family_learner_summaries(self) -> list[FamilyLearnerSummary]: ...
 
     def load_validation_backlog_entries(self) -> list[ValidationBacklogEntry]: ...
+
+    def load_submission_ready_records(self) -> list[SubmissionReadyCandidateRecord]: ...

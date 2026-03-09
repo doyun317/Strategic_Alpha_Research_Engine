@@ -15,6 +15,7 @@ from strategic_alpha_engine.application.workflows import (
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
     RobustPromotionWorkflow,
+    SubmissionReadyPromotionWorkflow,
     SimulationExecutionPolicy,
     SimulationOrchestratorWorkflow,
     StageAEvaluationWorkflow,
@@ -168,6 +169,21 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
         validate_result,
         candidates=[evaluation.candidate for evaluation in synthesize_result.evaluations[:2]],
     )
+    submission_ready_result = SubmissionReadyPromotionWorkflow().run(
+        source_run_id="promote.quality_deterioration.001",
+        robust_source_run_id=run_id,
+        hypothesis=plan_result.hypothesis,
+        blueprint=plan_result.blueprint,
+        robust_records=[
+            ledger._validation_promotion_record_from_outcome(
+                outcome,
+                validation_stage=promotion_result.validation_stage,
+            )
+            for outcome in promotion_result.outcomes
+            if outcome.promotion.to_stage == "robust_candidate"
+        ],
+        promoted_at=validate_result.period_results[0].outcomes[0].validation.validated_at,
+    )
 
     ledger.write_validation_result(
         run_id,
@@ -178,11 +194,17 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
         run_id,
         promotion_result,
     )
+    ledger.write_submission_ready_result(
+        "promote.quality_deterioration.001",
+        submission_ready_result,
+        agenda=plan_result.agenda,
+    )
 
     run_dir = tmp_path / "artifacts" / "runs" / run_id
     validations = _read_jsonl(run_dir / "validations.jsonl")
     matrix = _read_json(run_dir / "validation_matrix.json")
     robust_promotions = _read_jsonl(run_dir / "robust_promotion.jsonl")
+    submission_ready = _read_jsonl(tmp_path / "artifacts" / "runs" / "promote.quality_deterioration.001" / "submission_ready.jsonl")
 
     assert _read_json(run_dir / "agenda.json")["agenda_id"] == "agenda.quality_deterioration.001"
     assert len(validations) == 6
@@ -191,3 +213,5 @@ def test_local_file_artifact_ledger_writes_validation_artifacts(tmp_path):
     assert matrix["total_candidates"] == 2
     assert len(robust_promotions) == 2
     assert robust_promotions[0]["candidate"]["candidate_id"] == robust_promotions[0]["promotion"]["candidate_id"]
+    assert len(submission_ready) == 2
+    assert submission_ready[0]["candidate"]["candidate_id"] == submission_ready[0]["submission_promotion"]["candidate_id"]

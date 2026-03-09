@@ -9,6 +9,7 @@ from strategic_alpha_engine.application.contracts import (
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     RunStateRecord,
+    SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
 
@@ -54,6 +55,11 @@ class LocalFileStateLedger:
         self._append_jsonl(path, [entry.model_dump(mode="json") for entry in entries])
         return path
 
+    def append_submission_ready_records(self, records: list[SubmissionReadyCandidateRecord]) -> Path:
+        path = self.state_directory() / "submission_ready_candidates.jsonl"
+        self._append_jsonl(path, [record.model_dump(mode="json") for record in records])
+        return path
+
     def load_candidate_stage_records(self) -> list[CandidateStageRecord]:
         path = self.state_directory() / "candidate_stages.jsonl"
         return [CandidateStageRecord(**payload) for payload in self._read_jsonl(path)]
@@ -83,6 +89,10 @@ class LocalFileStateLedger:
     def load_validation_backlog_entries(self) -> list[ValidationBacklogEntry]:
         path = self.state_directory() / "validation_backlog.jsonl"
         return [ValidationBacklogEntry(**payload) for payload in self._read_jsonl(path)]
+
+    def load_submission_ready_records(self) -> list[SubmissionReadyCandidateRecord]:
+        path = self.state_directory() / "submission_ready_candidates.jsonl"
+        return [SubmissionReadyCandidateRecord(**payload) for payload in self._read_jsonl(path)]
 
     def _append_jsonl(self, path: Path, payloads: list[dict]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
