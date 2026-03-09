@@ -131,6 +131,7 @@ Current implementation includes:
 - standalone `plan` and `synthesize` CLI workflows
 - immutable simulation request / run domain models
 - Brain simulation client contract and fake adapter
+- simulation orchestrator workflow for critique-passed candidates
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic
