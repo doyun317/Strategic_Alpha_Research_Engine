@@ -133,6 +133,7 @@ Current implementation includes:
 - Brain simulation client contract and fake adapter
 - simulation orchestrator workflow for critique-passed candidates
 - local file-based artifact ledger for run outputs
+- local manifest-based state ledger for candidate/run/family state
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic

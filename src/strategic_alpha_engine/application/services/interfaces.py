@@ -12,6 +12,12 @@ from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationResult,
     BrainSimulationSubmission,
 )
+from strategic_alpha_engine.application.contracts.state import (
+    CandidateStageRecord,
+    FamilyStatsSnapshot,
+    RunStateRecord,
+    ValidationBacklogEntry,
+)
 from strategic_alpha_engine.domain.critique_report import CritiqueReport
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
@@ -79,3 +85,21 @@ class ArtifactLedger(Protocol):
         run_id: str,
         records: list[SimulationArtifactRecord],
     ) -> Path: ...
+
+
+class StateLedger(Protocol):
+    def append_candidate_stage_records(self, records: list[CandidateStageRecord]) -> Path: ...
+
+    def append_run_state_records(self, records: list[RunStateRecord]) -> Path: ...
+
+    def write_family_stats(self, snapshots: list[FamilyStatsSnapshot]) -> Path: ...
+
+    def append_validation_backlog_entries(self, entries: list[ValidationBacklogEntry]) -> Path: ...
+
+    def load_candidate_stage_records(self) -> list[CandidateStageRecord]: ...
+
+    def load_run_state_records(self) -> list[RunStateRecord]: ...
+
+    def load_family_stats(self) -> list[FamilyStatsSnapshot]: ...
+
+    def load_validation_backlog_entries(self) -> list[ValidationBacklogEntry]: ...
