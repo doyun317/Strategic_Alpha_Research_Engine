@@ -117,3 +117,12 @@ class OutlierRiskLevel(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+
+class SimulationStatus(str, Enum):
+    PENDING = "pending"
+    SUBMITTED = "submitted"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
