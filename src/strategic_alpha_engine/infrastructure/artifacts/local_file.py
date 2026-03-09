@@ -3,8 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from strategic_alpha_engine.application.contracts import CandidateArtifactRecord, SimulationArtifactRecord
+from strategic_alpha_engine.application.contracts import (
+    CandidateArtifactRecord,
+    EvaluationArtifactRecord,
+    PromotionArtifactRecord,
+    SimulationArtifactRecord,
+)
 from strategic_alpha_engine.application.workflows.plan import PlanResult
+from strategic_alpha_engine.application.workflows.evaluate_stage_a import StageACandidateOutcome, StageAEvaluationResult
 from strategic_alpha_engine.application.workflows.simulate import (
     SimulationCandidateExecution,
     SimulationOrchestratorResult,
@@ -71,6 +77,30 @@ class LocalFileArtifactLedger:
         )
         return run_dir
 
+    def write_evaluation_records(
+        self,
+        run_id: str,
+        records: list[EvaluationArtifactRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "evaluations.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
+    def write_promotion_records(
+        self,
+        run_id: str,
+        records: list[PromotionArtifactRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "promotion.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
     def write_plan_result(self, run_id: str, result: PlanResult) -> Path:
         return self.write_context(
             run_id,
@@ -112,6 +142,28 @@ class LocalFileArtifactLedger:
             ],
         )
 
+    def write_stage_a_result(self, run_id: str, result: StageAEvaluationResult) -> Path:
+        self.write_context(
+            run_id,
+            agenda=None,
+            hypothesis=result.hypothesis,
+            blueprint=result.blueprint,
+        )
+        self.write_evaluation_records(
+            run_id,
+            records=[
+                self._evaluation_record_from_outcome(outcome)
+                for outcome in result.outcomes
+            ],
+        )
+        return self.write_promotion_records(
+            run_id,
+            records=[
+                self._promotion_record_from_outcome(outcome)
+                for outcome in result.outcomes
+            ],
+        )
+
     def _candidate_record_from_evaluation(self, evaluation: CandidateEvaluation) -> CandidateArtifactRecord:
         return CandidateArtifactRecord(
             candidate=evaluation.candidate,
@@ -129,6 +181,25 @@ class LocalFileArtifactLedger:
             submission=execution.submission,
             poll_history=execution.poll_history,
             result=execution.result,
+        )
+
+    def _evaluation_record_from_outcome(
+        self,
+        outcome: StageACandidateOutcome,
+    ) -> EvaluationArtifactRecord:
+        return EvaluationArtifactRecord(
+            evaluation=outcome.evaluation,
+            simulation_run=outcome.execution.simulation_run,
+            result=outcome.execution.result,
+        )
+
+    def _promotion_record_from_outcome(
+        self,
+        outcome: StageACandidateOutcome,
+    ) -> PromotionArtifactRecord:
+        return PromotionArtifactRecord(
+            evaluation=outcome.evaluation,
+            promotion=outcome.promotion,
         )
 
     def _write_json(self, path: Path, payload: dict) -> None:

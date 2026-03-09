@@ -212,10 +212,13 @@ def test_simulate_command_persists_artifacts_and_state(tmp_path, capsys):
     assert payload["family"] == "quality_deterioration"
     assert payload["policy"]["test_period"] == "P2Y0M0D"
     assert payload["simulation_status_counts"]["succeeded"] == len(payload["simulated_candidate_ids"])
+    assert payload["promoted_candidate_ids"] == payload["simulated_candidate_ids"]
     assert run_dir.exists()
     assert (run_dir / "agenda.json").exists()
     assert (run_dir / "candidates.jsonl").exists()
     assert (run_dir / "simulations.jsonl").exists()
+    assert (run_dir / "evaluations.jsonl").exists()
+    assert (run_dir / "promotion.jsonl").exists()
     assert state_dir.exists()
     assert (state_dir / "candidate_stages.jsonl").exists()
     assert (state_dir / "run_states.jsonl").exists()

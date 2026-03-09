@@ -128,6 +128,18 @@ class SimulationStatus(str, Enum):
     TIMED_OUT = "timed_out"
 
 
+class EvaluationStage(str, Enum):
+    STAGE_A = "stage_a"
+    STAGE_B = "stage_b"
+    STAGE_C = "stage_c"
+
+
+class PromotionDecisionKind(str, Enum):
+    PROMOTE = "promote"
+    REJECT = "reject"
+    HOLD = "hold"
+
+
 class CandidateLifecycleStage(str, Enum):
     DRAFT = "draft"
     CRITIQUE_PASSED = "critique_passed"

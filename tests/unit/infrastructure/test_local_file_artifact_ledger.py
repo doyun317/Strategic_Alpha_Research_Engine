@@ -3,6 +3,8 @@ import json
 from strategic_alpha_engine.application.services import (
     MetadataBackedStaticValidator,
     RuleBasedStrategicCritic,
+    RuleBasedStageAEvaluator,
+    RuleBasedStageAPromotionDecider,
     SkeletonCandidateSynthesizer,
     StaticBlueprintBuilder,
     StaticHypothesisPlanner,
@@ -11,6 +13,7 @@ from strategic_alpha_engine.application.workflows import (
     PlanWorkflow,
     SimulationExecutionPolicy,
     SimulationOrchestratorWorkflow,
+    StageAEvaluationWorkflow,
     SynthesizeWorkflow,
 )
 from strategic_alpha_engine.domain.examples import build_sample_research_agenda
@@ -49,12 +52,20 @@ def test_local_file_artifact_ledger_writes_plan_synthesis_and_simulation_artifac
         synthesize_result=synthesize_result,
         policy=SimulationExecutionPolicy(),
     )
+    stage_a_result = StageAEvaluationWorkflow(
+        evaluator=RuleBasedStageAEvaluator(),
+        promotion_decider=RuleBasedStageAPromotionDecider(),
+    ).run(
+        simulation_result,
+        source_run_id="run.quality_deterioration.001",
+    )
     ledger = LocalFileArtifactLedger(tmp_path / "artifacts")
     run_id = "run.quality_deterioration.001"
 
     ledger.write_plan_result(run_id, plan_result)
     ledger.write_synthesize_result(run_id, synthesize_result, agenda=plan_result.agenda)
     ledger.write_simulation_result(run_id, simulation_result)
+    ledger.write_stage_a_result(run_id, stage_a_result)
 
     run_dir = tmp_path / "artifacts" / "runs" / run_id
 
@@ -69,6 +80,11 @@ def test_local_file_artifact_ledger_writes_plan_synthesis_and_simulation_artifac
     assert len(simulations) == 4
     assert simulations[0]["simulation_request"]["candidate_id"] == simulations[0]["result"]["candidate_id"]
     assert simulations[0]["simulation_run"]["provider_run_id"] == simulations[0]["submission"]["provider_run_id"]
+    evaluations = _read_jsonl(run_dir / "evaluations.jsonl")
+    promotions = _read_jsonl(run_dir / "promotion.jsonl")
+    assert len(evaluations) == 4
+    assert len(promotions) == 4
+    assert evaluations[0]["evaluation"]["candidate_id"] == promotions[0]["promotion"]["candidate_id"]
 
 
 def test_local_file_artifact_ledger_keeps_existing_agenda_when_writing_simulation_only(tmp_path):
@@ -91,13 +107,22 @@ def test_local_file_artifact_ledger_keeps_existing_agenda_when_writing_simulatio
         synthesize_result=synthesize_result,
         policy=SimulationExecutionPolicy(),
     )
+    stage_a_result = StageAEvaluationWorkflow(
+        evaluator=RuleBasedStageAEvaluator(),
+        promotion_decider=RuleBasedStageAPromotionDecider(),
+    ).run(
+        simulation_result,
+        source_run_id="run.quality_deterioration.002",
+    )
     ledger = LocalFileArtifactLedger(tmp_path / "artifacts")
     run_id = "run.quality_deterioration.002"
 
     ledger.write_plan_result(run_id, plan_result)
     ledger.write_simulation_result(run_id, simulation_result)
+    ledger.write_stage_a_result(run_id, stage_a_result)
 
     run_dir = tmp_path / "artifacts" / "runs" / run_id
 
     assert _read_json(run_dir / "agenda.json")["agenda_id"] == "agenda.quality_deterioration.001"
     assert len(_read_jsonl(run_dir / "simulations.jsonl")) == 4
+    assert len(_read_jsonl(run_dir / "promotion.jsonl")) == 4

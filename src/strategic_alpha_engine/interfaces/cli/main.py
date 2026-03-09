@@ -10,6 +10,8 @@ from strategic_alpha_engine.application.contracts import CandidateStageRecord, F
 from strategic_alpha_engine.application.services import (
     MetadataBackedStaticValidator,
     RuleBasedStrategicCritic,
+    RuleBasedStageAEvaluator,
+    RuleBasedStageAPromotionDecider,
     SkeletonCandidateSynthesizer,
     StaticBlueprintBuilder,
     StaticHypothesisPlanner,
@@ -19,6 +21,7 @@ from strategic_alpha_engine.application.workflows import (
     ResearchOnceWorkflow,
     SimulationExecutionPolicy,
     SimulationOrchestratorWorkflow,
+    StageAEvaluationWorkflow,
     SynthesizeWorkflow,
 )
 from strategic_alpha_engine.config import RuntimeSettings, load_runtime_settings
@@ -101,6 +104,13 @@ def _build_synthesize_workflow() -> SynthesizeWorkflow:
     )
 
 
+def _build_stage_a_workflow() -> StageAEvaluationWorkflow:
+    return StageAEvaluationWorkflow(
+        evaluator=RuleBasedStageAEvaluator(),
+        promotion_decider=RuleBasedStageAPromotionDecider(),
+    )
+
+
 def _load_synthesize_inputs(
     plan_input_path: str | None,
     hypothesis_input_path: str | None,
@@ -173,13 +183,13 @@ def _build_candidate_stage_records(
     run_id: str,
     hypothesis: HypothesisSpec,
     synthesize_result,
-    simulation_result,
+    stage_a_result,
     default_recorded_at: datetime,
 ) -> list[CandidateStageRecord]:
     stage_records: list[CandidateStageRecord] = []
-    execution_by_candidate_id = {
-        execution.candidate.candidate_id: execution
-        for execution in simulation_result.executions
+    outcome_by_candidate_id = {
+        outcome.candidate.candidate_id: outcome
+        for outcome in stage_a_result.outcomes
     }
 
     for evaluation in synthesize_result.evaluations:
@@ -214,26 +224,22 @@ def _build_candidate_stage_records(
             )
         )
 
-        execution = execution_by_candidate_id.get(candidate_id)
-        if execution is None:
+        outcome = outcome_by_candidate_id.get(candidate_id)
+        if outcome is None:
             continue
 
-        final_stage = (
-            CandidateLifecycleStage.SIM_PASSED
-            if execution.result.status == SimulationStatus.SUCCEEDED
-            else CandidateLifecycleStage.REJECTED
-        )
-        note = f"simulation result: {execution.result.status}"
+        final_stage = outcome.promotion.to_stage
+        note = f"promotion decision: {outcome.promotion.decision}"
         stage_records.append(
             CandidateStageRecord(
-                stage_record_id=f"stage.{run_id}.{candidate_id}.{final_stage.value}",
+                stage_record_id=f"stage.{run_id}.{candidate_id}.{final_stage}",
                 candidate_id=candidate_id,
                 hypothesis_id=hypothesis.hypothesis_id,
                 blueprint_id=synthesize_result.blueprint.blueprint_id,
                 family=hypothesis.family,
                 stage=final_stage,
                 source_run_id=run_id,
-                recorded_at=execution.result.completed_at,
+                recorded_at=outcome.promotion.decided_at,
                 notes=note[:240],
             )
         )
@@ -621,6 +627,10 @@ def main(argv: list[str] | None = None) -> int:
                 synthesize_result=synthesize_result,
                 policy=policy,
             )
+            stage_a_result = _build_stage_a_workflow().run(
+                simulation_result,
+                source_run_id=run_id,
+            )
 
             artifact_ledger = LocalFileArtifactLedger(args.artifacts_dir)
             artifact_run_dir = artifact_ledger.write_synthesize_result(
@@ -629,12 +639,13 @@ def main(argv: list[str] | None = None) -> int:
                 agenda=agenda,
             )
             artifact_ledger.write_simulation_result(run_id, simulation_result)
+            artifact_ledger.write_stage_a_result(run_id, stage_a_result)
 
             candidate_stage_records = _build_candidate_stage_records(
                 run_id=run_id,
                 hypothesis=hypothesis,
                 synthesize_result=synthesize_result,
-                simulation_result=simulation_result,
+                stage_a_result=stage_a_result,
                 default_recorded_at=started_at,
             )
             state_ledger.append_candidate_stage_records(candidate_stage_records)
@@ -687,6 +698,8 @@ def main(argv: list[str] | None = None) -> int:
                 "accepted_candidate_ids": synthesize_result.accepted_candidate_ids,
                 "rejected_candidate_ids": synthesize_result.rejected_candidate_ids,
                 "simulated_candidate_ids": simulation_result.simulated_candidate_ids,
+                "promoted_candidate_ids": stage_a_result.promoted_candidate_ids,
+                "stage_a_rejected_candidate_ids": stage_a_result.rejected_candidate_ids,
                 "skipped_candidate_ids": simulation_result.skipped_candidate_ids,
                 "simulation_status_counts": simulation_status_counts,
                 "artifact_run_dir": str(artifact_run_dir),

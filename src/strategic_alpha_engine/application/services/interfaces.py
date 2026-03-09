@@ -5,6 +5,8 @@ from typing import Protocol
 
 from strategic_alpha_engine.application.contracts.artifacts import (
     CandidateArtifactRecord,
+    EvaluationArtifactRecord,
+    PromotionArtifactRecord,
     SimulationArtifactRecord,
 )
 from strategic_alpha_engine.application.contracts.simulation import (
@@ -18,12 +20,14 @@ from strategic_alpha_engine.application.contracts.state import (
     RunStateRecord,
     ValidationBacklogEntry,
 )
+from strategic_alpha_engine.domain.evaluation import EvaluationRecord
 from strategic_alpha_engine.domain.critique_report import CritiqueReport
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
+from strategic_alpha_engine.domain.promotion import PromotionDecision
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
-from strategic_alpha_engine.domain.simulation import SimulationRequest
+from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
 from strategic_alpha_engine.domain.static_validation import StaticValidationReport
 
 
@@ -64,6 +68,21 @@ class BrainSimulationClient(Protocol):
     def fetch_result(self, provider_run_id: str) -> BrainSimulationResult: ...
 
 
+class StageAEvaluator(Protocol):
+    def evaluate(
+        self,
+        simulation_request: SimulationRequest,
+        simulation_run: SimulationRun,
+        result: BrainSimulationResult,
+        *,
+        source_run_id: str,
+    ) -> EvaluationRecord: ...
+
+
+class PromotionDecider(Protocol):
+    def decide(self, evaluation: EvaluationRecord) -> PromotionDecision: ...
+
+
 class ArtifactLedger(Protocol):
     def write_context(
         self,
@@ -84,6 +103,18 @@ class ArtifactLedger(Protocol):
         self,
         run_id: str,
         records: list[SimulationArtifactRecord],
+    ) -> Path: ...
+
+    def write_evaluation_records(
+        self,
+        run_id: str,
+        records: list[EvaluationArtifactRecord],
+    ) -> Path: ...
+
+    def write_promotion_records(
+        self,
+        run_id: str,
+        records: list[PromotionArtifactRecord],
     ) -> Path: ...
 
 
