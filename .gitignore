@@ -9,8 +9,8 @@ settings/brain.env
 dist/
 build/
 *.egg-info/
-artifacts/
-logs/
-data/
+/artifacts/
+/logs/
+/data/
 coverage.xml
 .coverage
