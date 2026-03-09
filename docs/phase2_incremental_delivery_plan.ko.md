@@ -105,8 +105,8 @@ git checkout -b phase2/2-3-static-validator
 | 2-1 | `phase2/2-1-config-and-runtime-model` | Phase 0 foundation | runtime settings 모델과 env 로딩 구조 확정 | 설정 로딩, validation, CLI 확인 | `completed` |
 | 2-2 | `phase2/2-2-metadata-catalog` | 11.3 Metadata Intelligence Layer | field/operator metadata catalog 추가 | catalog load, filtering, lookup 테스트 통과 | `completed` |
 | 2-3 | `phase2/2-3-static-validator` | 11.7 Static Validator | compiler-safe validator 추가 | invalid expression 차단 테스트 통과 | `completed` |
-| 2-4 | `phase2/2-4-prompt-assets-and-golden-samples` | 15, 16 Prompt Strategy | planner/blueprint/critic prompt 파일 분리와 golden sample 테스트 기초 추가 | prompt asset 로딩 및 golden sample 테스트 통과 | `in_progress` |
-| 2-5 | `phase2/2-5-plan-and-synthesize-cli` | 14.1, 14.2 실행 모드 | `plan`, `synthesize` CLI 추가 | agenda -> hypothesis -> blueprint / blueprint -> candidate+critique 분리 실행 가능 | `planned` |
+| 2-4 | `phase2/2-4-prompt-assets-and-golden-samples` | 15, 16 Prompt Strategy | planner/blueprint/critic prompt 파일 분리와 golden sample 테스트 기초 추가 | prompt asset 로딩 및 golden sample 테스트 통과 | `completed` |
+| 2-5 | `phase2/2-5-plan-and-synthesize-cli` | 14.1, 14.2 실행 모드 | `plan`, `synthesize` CLI 추가 | agenda -> hypothesis -> blueprint / blueprint -> candidate+critique 분리 실행 가능 | `completed` |
 | 2-6 | `phase2/2-6-simulation-domain` | 10.6, 11.8 | immutable `SimulationRequest`, `SimulationRun` 도메인 추가 | request/run validation 테스트 통과 | `planned` |
 | 2-7 | `phase2/2-7-brain-client-contract` | 9.3, 11.8 | Brain adapter contract와 fake adapter 추가 | fake submit/poll/fetch 테스트 가능 | `planned` |
 | 2-8 | `phase2/2-8-simulation-orchestrator` | 11.8 | critique 통과 후보 simulation orchestration 구현 | submit/poll/result 흐름 테스트 통과 | `planned` |
@@ -189,36 +189,31 @@ git checkout -b phase2/2-3-static-validator
 - 다음 브랜치가 현재 브랜치 결과물을 안정적으로 재사용할 수 있는가
 - 로컬 파일 저장 포맷이 사람이 직접 읽을 수 있는가
 
-## 9. 현재 작업 범위: 2-4
+## 9. 현재 작업 범위: 2-6
 
 다음 브랜치에서 처리할 내용:
 
-- planner prompt asset 파일 추가
-- blueprint prompt asset 파일 추가
-- critic prompt asset 파일 추가
-- role별 golden sample JSON 추가
-- prompt asset loader와 golden sample contract validation 추가
-- prompt asset 확인용 최소 CLI 추가
+- `SimulationRequest` 추가
+- `SimulationRun` 추가
+- immutable simulation domain 규칙 추가
+- 관련 단위 테스트 추가
 
 이번 브랜치에서 일부러 하지 않는 내용:
 
-- 실제 LLM HTTP 호출
-- simulation
+- Brain adapter 구현
 - artifact persistence
 - promotion
 - family stats
 
-## 10. `2-4` 권장 커밋 단위
+## 10. `2-6` 권장 커밋 단위
 
-1. prompt asset 모델과 loader 추가
-2. planner / blueprint / critic asset 파일 추가
-3. golden sample validation 추가
-4. 테스트 추가
-5. 문서 상태 업데이트
+1. simulation domain model 추가
+2. 상태 enum / timestamp / immutable field 정리
+3. 테스트 추가
+4. 문서 상태 업데이트
 
-## 11. `2-5` 진입 조건
+## 11. `2-7` 진입 조건
 
 - `pytest` 통과
-- planner / blueprint / critic prompt asset 로딩 확인
-- golden sample input/output이 각 contract를 통과함
-- `python -m strategic_alpha_engine prompt --role planner` 정상 동작
+- `SimulationRequest`, `SimulationRun` validation 테스트 통과
+- run status 전이 규칙이 코드로 명시됨

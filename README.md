@@ -78,6 +78,17 @@ python -m strategic_alpha_engine prompt --role planner
 python -m strategic_alpha_engine prompt --role critic --sample-id critic.quality_deterioration.001
 ```
 
+Run planning and synthesis separately:
+
+```bash
+python -m strategic_alpha_engine plan
+python -m strategic_alpha_engine synthesize
+
+# or persist intermediate JSON locally
+python -m strategic_alpha_engine plan --out tmp/plan.json
+python -m strategic_alpha_engine synthesize --plan-in tmp/plan.json --out tmp/synthesis.json
+```
+
 ## Schema Commands
 
 Print JSON schema:
@@ -117,6 +128,7 @@ Current implementation includes:
 - domain schemas for agenda, hypothesis, blueprint, candidate, critique
 - metadata-backed static validator before critique
 - prompt assets and golden samples for planner / blueprint / critic roles
+- standalone `plan` and `synthesize` CLI workflows
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic

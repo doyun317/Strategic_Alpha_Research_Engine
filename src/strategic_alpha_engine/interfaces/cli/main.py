@@ -11,7 +11,7 @@ from strategic_alpha_engine.application.services import (
     StaticBlueprintBuilder,
     StaticHypothesisPlanner,
 )
-from strategic_alpha_engine.application.workflows import ResearchOnceWorkflow
+from strategic_alpha_engine.application.workflows import PlanWorkflow, ResearchOnceWorkflow, SynthesizeWorkflow
 from strategic_alpha_engine.config import load_runtime_settings
 from strategic_alpha_engine.domain import (
     CritiqueReport,
@@ -41,6 +41,58 @@ def _write_output(payload: dict | list, output_path: str | None) -> None:
     path.write_text(rendered + "\n", encoding="utf-8")
 
 
+def _read_input_payload(path: str) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _load_agenda(path: str | None) -> ResearchAgenda:
+    if not path:
+        return build_sample_research_agenda()
+    return ResearchAgenda(**_read_input_payload(path))
+
+
+def _load_hypothesis(path: str | None) -> HypothesisSpec:
+    if not path:
+        return build_sample_hypothesis_spec()
+    return HypothesisSpec(**_read_input_payload(path))
+
+
+def _load_blueprint(path: str | None) -> SignalBlueprint:
+    if not path:
+        return build_sample_signal_blueprint()
+    return SignalBlueprint(**_read_input_payload(path))
+
+
+def _build_static_validator() -> MetadataBackedStaticValidator:
+    return MetadataBackedStaticValidator(load_seed_metadata_catalog())
+
+
+def _build_plan_workflow() -> PlanWorkflow:
+    return PlanWorkflow(
+        hypothesis_planner=StaticHypothesisPlanner(),
+        blueprint_builder=StaticBlueprintBuilder(),
+    )
+
+
+def _build_synthesize_workflow() -> SynthesizeWorkflow:
+    return SynthesizeWorkflow(
+        candidate_synthesizer=SkeletonCandidateSynthesizer(),
+        static_validator=_build_static_validator(),
+        strategic_critic=RuleBasedStrategicCritic(),
+    )
+
+
+def _load_synthesize_inputs(
+    plan_input_path: str | None,
+    hypothesis_input_path: str | None,
+    blueprint_input_path: str | None,
+) -> tuple[HypothesisSpec, SignalBlueprint]:
+    if plan_input_path:
+        payload = _read_input_payload(plan_input_path)
+        return HypothesisSpec(**payload["hypothesis"]), SignalBlueprint(**payload["blueprint"])
+    return _load_hypothesis(hypothesis_input_path), _load_blueprint(blueprint_input_path)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Strategic Alpha Engine developer CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -66,6 +118,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the static structured-generation workflow once and print the result",
     )
     research_once_parser.add_argument("--out", default=None)
+
+    plan_parser = subparsers.add_parser(
+        "plan",
+        help="Run agenda -> hypothesis -> blueprint planning and print the result",
+    )
+    plan_parser.add_argument("--agenda-in", default=None)
+    plan_parser.add_argument("--out", default=None)
+
+    synthesize_parser = subparsers.add_parser(
+        "synthesize",
+        help="Run blueprint -> candidate -> validation -> critique synthesis and print the result",
+    )
+    synthesize_parser.add_argument("--plan-in", default=None)
+    synthesize_parser.add_argument("--hypothesis-in", default=None)
+    synthesize_parser.add_argument("--blueprint-in", default=None)
+    synthesize_parser.add_argument("--out", default=None)
 
     config_parser = subparsers.add_parser("config", help="Load and print runtime settings")
     config_parser.add_argument("--settings-dir", default=None)
@@ -128,12 +196,28 @@ def main(argv: list[str] | None = None) -> int:
             hypothesis_planner=StaticHypothesisPlanner(),
             blueprint_builder=StaticBlueprintBuilder(),
             candidate_synthesizer=SkeletonCandidateSynthesizer(),
-            static_validator=MetadataBackedStaticValidator(load_seed_metadata_catalog()),
+            static_validator=_build_static_validator(),
             strategic_critic=RuleBasedStrategicCritic(),
         )
         result = workflow.run(build_sample_research_agenda())
         payload = result.model_dump()
         _write_output(payload, args.out)
+        return 0
+
+    if args.command == "plan":
+        agenda = _load_agenda(args.agenda_in)
+        result = _build_plan_workflow().run(agenda)
+        _write_output(result.model_dump(mode="json"), args.out)
+        return 0
+
+    if args.command == "synthesize":
+        hypothesis, blueprint = _load_synthesize_inputs(
+            plan_input_path=args.plan_in,
+            hypothesis_input_path=args.hypothesis_in,
+            blueprint_input_path=args.blueprint_in,
+        )
+        result = _build_synthesize_workflow().run(hypothesis=hypothesis, blueprint=blueprint)
+        _write_output(result.model_dump(mode="json"), args.out)
         return 0
 
     if args.command == "config":
