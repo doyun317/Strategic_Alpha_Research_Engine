@@ -1,3 +1,7 @@
+from strategic_alpha_engine.application.contracts.artifacts import (
+    CandidateArtifactRecord,
+    SimulationArtifactRecord,
+)
 from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationPollResult,
     BrainSimulationResult,
@@ -14,6 +18,7 @@ from strategic_alpha_engine.application.contracts.structured_generation import (
 )
 
 __all__ = [
+    "CandidateArtifactRecord",
     "BrainSimulationPollResult",
     "BrainSimulationResult",
     "BrainSimulationSubmission",
@@ -22,6 +27,7 @@ __all__ = [
     "FieldCatalogEntry",
     "HypothesisPlannerPromptInput",
     "HypothesisPlannerPromptOutput",
+    "SimulationArtifactRecord",
     "StrategicCriticPromptInput",
     "StrategicCriticPromptOutput",
 ]

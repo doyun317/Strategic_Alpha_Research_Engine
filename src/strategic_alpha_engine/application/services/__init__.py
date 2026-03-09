@@ -1,4 +1,5 @@
 from strategic_alpha_engine.application.services.interfaces import (
+    ArtifactLedger,
     BrainSimulationClient,
     BlueprintBuilder,
     CandidateSynthesizer,
@@ -15,6 +16,7 @@ from strategic_alpha_engine.application.services.static_planners import (
 )
 
 __all__ = [
+    "ArtifactLedger",
     "BrainSimulationClient",
     "BlueprintBuilder",
     "CandidateSynthesizer",

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol
 
+from strategic_alpha_engine.application.contracts.artifacts import (
+    CandidateArtifactRecord,
+    SimulationArtifactRecord,
+)
 from strategic_alpha_engine.application.contracts.simulation import (
     BrainSimulationPollResult,
     BrainSimulationResult,
@@ -51,3 +56,26 @@ class BrainSimulationClient(Protocol):
     def poll(self, provider_run_id: str) -> BrainSimulationPollResult: ...
 
     def fetch_result(self, provider_run_id: str) -> BrainSimulationResult: ...
+
+
+class ArtifactLedger(Protocol):
+    def write_context(
+        self,
+        run_id: str,
+        *,
+        agenda: ResearchAgenda | None,
+        hypothesis: HypothesisSpec,
+        blueprint: SignalBlueprint,
+    ) -> Path: ...
+
+    def write_candidate_records(
+        self,
+        run_id: str,
+        records: list[CandidateArtifactRecord],
+    ) -> Path: ...
+
+    def write_simulation_records(
+        self,
+        run_id: str,
+        records: list[SimulationArtifactRecord],
+    ) -> Path: ...
