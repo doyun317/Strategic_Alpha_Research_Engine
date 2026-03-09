@@ -132,6 +132,7 @@ Current implementation includes:
 - immutable simulation request / run domain models
 - Brain simulation client contract and fake adapter
 - simulation orchestrator workflow for critique-passed candidates
+- local file-based artifact ledger for run outputs
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic
