@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from strategic_alpha_engine.application.contracts.simulation import (
+    BrainSimulationPollResult,
+    BrainSimulationResult,
+    BrainSimulationSubmission,
+)
 from strategic_alpha_engine.domain.critique_report import CritiqueReport
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
 from strategic_alpha_engine.domain.hypothesis_spec import HypothesisSpec
 from strategic_alpha_engine.domain.research_agenda import ResearchAgenda
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
+from strategic_alpha_engine.domain.simulation import SimulationRequest
 from strategic_alpha_engine.domain.static_validation import StaticValidationReport
 
 
@@ -37,3 +43,11 @@ class StrategicCritic(Protocol):
         blueprint: SignalBlueprint,
         candidate: ExpressionCandidate,
     ) -> CritiqueReport: ...
+
+
+class BrainSimulationClient(Protocol):
+    def submit(self, request: SimulationRequest) -> BrainSimulationSubmission: ...
+
+    def poll(self, provider_run_id: str) -> BrainSimulationPollResult: ...
+
+    def fetch_result(self, provider_run_id: str) -> BrainSimulationResult: ...

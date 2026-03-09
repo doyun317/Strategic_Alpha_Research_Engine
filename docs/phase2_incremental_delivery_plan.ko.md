@@ -108,7 +108,7 @@ git checkout -b phase2/2-3-static-validator
 | 2-4 | `phase2/2-4-prompt-assets-and-golden-samples` | 15, 16 Prompt Strategy | planner/blueprint/critic prompt 파일 분리와 golden sample 테스트 기초 추가 | prompt asset 로딩 및 golden sample 테스트 통과 | `completed` |
 | 2-5 | `phase2/2-5-plan-and-synthesize-cli` | 14.1, 14.2 실행 모드 | `plan`, `synthesize` CLI 추가 | agenda -> hypothesis -> blueprint / blueprint -> candidate+critique 분리 실행 가능 | `completed` |
 | 2-6 | `phase2/2-6-simulation-domain` | 10.6, 11.8 | immutable `SimulationRequest`, `SimulationRun` 도메인 추가 | request/run validation 테스트 통과 | `completed` |
-| 2-7 | `phase2/2-7-brain-client-contract` | 9.3, 11.8 | Brain adapter contract와 fake adapter 추가 | fake submit/poll/fetch 테스트 가능 | `planned` |
+| 2-7 | `phase2/2-7-brain-client-contract` | 9.3, 11.8 | Brain adapter contract와 fake adapter 추가 | fake submit/poll/fetch 테스트 가능 | `completed` |
 | 2-8 | `phase2/2-8-simulation-orchestrator` | 11.8 | critique 통과 후보 simulation orchestration 구현 | submit/poll/result 흐름 테스트 통과 | `planned` |
 | 2-9 | `phase2/2-9-local-artifact-ledger` | 12.2 Artifact Store | run artifact를 로컬 JSON/JSONL로 저장 | run_id 기준 artifact 저장 확인 | `planned` |
 | 2-10 | `phase2/2-10-local-state-ledger` | 12.3 State Store | candidate stage / run state / family stats를 로컬 manifest로 저장 | 상태 전이 기록과 재로딩 확인 | `planned` |
@@ -189,32 +189,32 @@ git checkout -b phase2/2-3-static-validator
 - 다음 브랜치가 현재 브랜치 결과물을 안정적으로 재사용할 수 있는가
 - 로컬 파일 저장 포맷이 사람이 직접 읽을 수 있는가
 
-## 9. 현재 작업 범위: 2-7
+## 9. 현재 작업 범위: 2-8
 
 다음 브랜치에서 처리할 내용:
 
-- `BrainSimulationClient` contract 추가
-- fake Brain adapter 추가
-- submit / poll / fetch result contract 고정
+- `SimulationOrchestrator` 추가
+- critique 통과 후보만 submit 하는 정책 고정
+- Brain client contract를 이용한 submit / poll / fetch 흐름 연결
 - 관련 단위 테스트 추가
 
 이번 브랜치에서 일부러 하지 않는 내용:
 
 - 실제 HTTP 구현
-- simulation orchestration
+- CLI 연결
 - artifact persistence
 - promotion
 - family stats
 
-## 10. `2-7` 권장 커밋 단위
+## 10. `2-8` 권장 커밋 단위
 
-1. Brain client interface 추가
-2. fake adapter와 response contract 추가
+1. orchestrator workflow 추가
+2. fake Brain client 연동 테스트 추가
 3. 테스트 추가
 4. 문서 상태 업데이트
 
-## 11. `2-8` 진입 조건
+## 11. `2-9` 진입 조건
 
 - `pytest` 통과
-- fake Brain client 기준 submit / poll / fetch 테스트 통과
-- application layer가 HTTP 구현 없이도 simulation contract를 사용할 수 있음
+- critique 통과 후보만 simulation 대상으로 선정됨
+- fake Brain client 기준 submit / poll / fetch orchestration 테스트 통과

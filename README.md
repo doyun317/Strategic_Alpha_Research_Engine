@@ -130,6 +130,7 @@ Current implementation includes:
 - prompt assets and golden samples for planner / blueprint / critic roles
 - standalone `plan` and `synthesize` CLI workflows
 - immutable simulation request / run domain models
+- Brain simulation client contract and fake adapter
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic
