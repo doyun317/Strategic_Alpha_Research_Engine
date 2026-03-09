@@ -213,6 +213,7 @@ def test_simulate_command_persists_artifacts_and_state(tmp_path, capsys):
     assert payload["policy"]["test_period"] == "P2Y0M0D"
     assert payload["simulation_status_counts"]["succeeded"] == len(payload["simulated_candidate_ids"])
     assert payload["promoted_candidate_ids"] == payload["simulated_candidate_ids"]
+    assert payload["family_learner_summary"]["stage_a_pass_rate"] == 1.0
     assert run_dir.exists()
     assert (run_dir / "agenda.json").exists()
     assert (run_dir / "candidates.jsonl").exists()
@@ -223,6 +224,7 @@ def test_simulate_command_persists_artifacts_and_state(tmp_path, capsys):
     assert (state_dir / "candidate_stages.jsonl").exists()
     assert (state_dir / "run_states.jsonl").exists()
     assert (state_dir / "family_stats.json").exists()
+    assert (state_dir / "family_learner_summaries.json").exists()
 
 
 def test_status_command_summarizes_local_ledgers(tmp_path, capsys):
@@ -265,3 +267,5 @@ def test_status_command_summarizes_local_ledgers(tmp_path, capsys):
     assert payload["candidate_stage_counts"]["sim_passed"] == 4
     assert payload["runs"]["counts_by_kind"]["simulate"] == 1
     assert payload["family_stats"][0]["sim_passed_candidates"] == 4
+    assert payload["family_stats"][0]["median_stage_a_sharpe"] == 1.21
+    assert payload["family_learner_summaries"][0]["stage_a_pass_rate"] == 1.0

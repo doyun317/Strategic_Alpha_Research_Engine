@@ -6,8 +6,15 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 
-from strategic_alpha_engine.application.contracts import CandidateStageRecord, FamilyStatsSnapshot, RunStateRecord
+from strategic_alpha_engine.application.contracts import (
+    CandidateStageRecord,
+    FamilyLearnerSummary,
+    FamilyStatsSnapshot,
+    RunStateRecord,
+)
 from strategic_alpha_engine.application.services import (
+    FamilyAnalyticsBundle,
+    LocalArtifactFamilyAnalyticsBuilder,
     MetadataBackedStaticValidator,
     RuleBasedStrategicCritic,
     RuleBasedStageAEvaluator,
@@ -178,6 +185,16 @@ def _latest_run_state_records(records: list[RunStateRecord]) -> dict[str, RunSta
     return latest
 
 
+def _build_family_analytics_bundle(
+    root_dir: str | Path,
+    candidate_stage_records: list[CandidateStageRecord],
+) -> FamilyAnalyticsBundle:
+    return LocalArtifactFamilyAnalyticsBuilder().build(
+        root_dir,
+        candidate_stage_records=candidate_stage_records,
+    )
+
+
 def _build_candidate_stage_records(
     *,
     run_id: str,
@@ -247,59 +264,6 @@ def _build_candidate_stage_records(
     return stage_records
 
 
-def _derive_family_stats_snapshots(
-    candidate_stage_records: list[CandidateStageRecord],
-) -> list[FamilyStatsSnapshot]:
-    latest_records = _latest_candidate_stage_records(candidate_stage_records)
-    records_by_family: dict[str, list[CandidateStageRecord]] = {}
-    for record in latest_records.values():
-        records_by_family.setdefault(record.family, []).append(record)
-
-    critique_passed_stages = {
-        CandidateLifecycleStage.CRITIQUE_PASSED,
-        CandidateLifecycleStage.SIM_PASSED,
-        CandidateLifecycleStage.ROBUST_CANDIDATE,
-        CandidateLifecycleStage.SUBMISSION_READY,
-    }
-    sim_passed_stages = {
-        CandidateLifecycleStage.SIM_PASSED,
-        CandidateLifecycleStage.ROBUST_CANDIDATE,
-        CandidateLifecycleStage.SUBMISSION_READY,
-    }
-    robust_stages = {
-        CandidateLifecycleStage.ROBUST_CANDIDATE,
-        CandidateLifecycleStage.SUBMISSION_READY,
-    }
-
-    snapshots: list[FamilyStatsSnapshot] = []
-    for family_key in sorted(records_by_family):
-        family_records = records_by_family[family_key]
-        updated_at = max(record.recorded_at for record in family_records)
-        last_record = max(family_records, key=lambda record: record.recorded_at)
-        snapshots.append(
-            FamilyStatsSnapshot(
-                family=family_records[0].family,
-                total_candidates=len(family_records),
-                critique_passed_candidates=sum(
-                    1 for record in family_records if record.stage in critique_passed_stages
-                ),
-                sim_passed_candidates=sum(
-                    1 for record in family_records if record.stage in sim_passed_stages
-                ),
-                robust_candidates=sum(1 for record in family_records if record.stage in robust_stages),
-                submission_ready_candidates=sum(
-                    1 for record in family_records if record.stage == CandidateLifecycleStage.SUBMISSION_READY
-                ),
-                rejected_candidates=sum(
-                    1 for record in family_records if record.stage == CandidateLifecycleStage.REJECTED
-                ),
-                updated_at=updated_at,
-                last_run_id=last_record.source_run_id,
-            )
-        )
-    return snapshots
-
-
 def _build_stage_counts(candidate_stage_records: list[CandidateStageRecord]) -> dict[str, int]:
     counts = {stage.value: 0 for stage in CandidateLifecycleStage}
     for record in _latest_candidate_stage_records(candidate_stage_records).values():
@@ -322,10 +286,15 @@ def _build_status_summary(root_dir: str | Path) -> dict:
     candidate_stage_records = state_ledger.load_candidate_stage_records()
     run_state_records = state_ledger.load_run_state_records()
     family_stats = state_ledger.load_family_stats()
+    learner_summaries = state_ledger.load_family_learner_summaries()
     validation_backlog_entries = state_ledger.load_validation_backlog_entries()
 
-    if not family_stats:
-        family_stats = _derive_family_stats_snapshots(candidate_stage_records)
+    if not family_stats or not learner_summaries:
+        analytics_bundle = _build_family_analytics_bundle(artifacts_root, candidate_stage_records)
+        if not family_stats:
+            family_stats = analytics_bundle.family_stats
+        if not learner_summaries:
+            learner_summaries = analytics_bundle.learner_summaries
 
     latest_run_records = list(_latest_run_state_records(run_state_records).values())
     latest_run_records.sort(
@@ -417,6 +386,10 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         "loop_status": loop_status,
         "agenda_status": agenda_status,
         "family_stats": [snapshot.model_dump(mode="json") for snapshot in family_stats],
+        "family_learner_summaries": [
+            summary.model_dump(mode="json")
+            for summary in learner_summaries
+        ],
         "validation_backlog": {
             "total_entries": len(validation_backlog_entries),
             "counts_by_status": dict(sorted(backlog_counts.items())),
@@ -650,8 +623,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             state_ledger.append_candidate_stage_records(candidate_stage_records)
             all_stage_records = state_ledger.load_candidate_stage_records()
-            family_stats = _derive_family_stats_snapshots(all_stage_records)
+            analytics_bundle = _build_family_analytics_bundle(args.artifacts_dir, all_stage_records)
+            family_stats = analytics_bundle.family_stats
+            learner_summaries = analytics_bundle.learner_summaries
             state_ledger.write_family_stats(family_stats)
+            state_ledger.write_family_learner_summaries(learner_summaries)
 
             completed_at = _utc_now()
             state_ledger.append_run_state_records(
@@ -688,6 +664,14 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 None,
             )
+            learner_summary = next(
+                (
+                    summary.model_dump(mode="json")
+                    for summary in learner_summaries
+                    if summary.family == hypothesis.family
+                ),
+                None,
+            )
             payload = {
                 "run_id": run_id,
                 "family": hypothesis.family,
@@ -705,6 +689,7 @@ def main(argv: list[str] | None = None) -> int:
                 "artifact_run_dir": str(artifact_run_dir),
                 "state_dir": str(state_ledger.state_directory()),
                 "family_stats": family_snapshot,
+                "family_learner_summary": learner_summary,
             }
             _write_output(payload, args.out)
             return 0

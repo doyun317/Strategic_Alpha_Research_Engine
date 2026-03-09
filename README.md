@@ -22,6 +22,12 @@ Current status:
   - [docs/mvp_scope.ko.md](./docs/mvp_scope.ko.md)
 - Phase 1 scope:
   - [docs/phase1_structured_generation_foundation.ko.md](./docs/phase1_structured_generation_foundation.ko.md)
+- Phase 3 scope:
+  - [docs/phase3_learning_loop.ko.md](./docs/phase3_learning_loop.ko.md)
+- Phase 4 scope:
+  - [docs/phase4_robust_validation.ko.md](./docs/phase4_robust_validation.ko.md)
+- Phase 5 scope:
+  - [docs/phase5_submission_prep_layer.ko.md](./docs/phase5_submission_prep_layer.ko.md)
 
 ## Quickstart
 
@@ -148,6 +154,7 @@ Current implementation includes:
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
 - artifact persistence for `evaluations.jsonl` and `promotion.jsonl`
+- learner-ready family stats and `family_learner_summaries.json`
 - static planner and blueprint builder
 - skeleton-based candidate synthesizer
 - rule-based strategic critic

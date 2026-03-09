@@ -85,6 +85,17 @@ class FamilyStatsSnapshot(EngineModel):
     robust_candidates: int = Field(ge=0)
     submission_ready_candidates: int = Field(ge=0)
     rejected_candidates: int = Field(ge=0)
+    simulation_candidate_count: int = Field(default=0, ge=0)
+    simulation_success_count: int = Field(default=0, ge=0)
+    simulation_failed_count: int = Field(default=0, ge=0)
+    simulation_timed_out_count: int = Field(default=0, ge=0)
+    stage_a_evaluation_count: int = Field(default=0, ge=0)
+    stage_a_passed_count: int = Field(default=0, ge=0)
+    median_stage_a_sharpe: float | None = None
+    critique_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    stage_a_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    simulation_timeout_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    submission_ready_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     updated_at: datetime
     last_run_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
 
@@ -101,10 +112,34 @@ class FamilyStatsSnapshot(EngineModel):
             self.robust_candidates,
             self.submission_ready_candidates,
             self.rejected_candidates,
+            self.simulation_candidate_count,
+            self.stage_a_evaluation_count,
         )
         if any(count > self.total_candidates for count in compared_counts):
             raise ValueError("family stats counts must not exceed total_candidates")
+        if self.simulation_success_count + self.simulation_failed_count + self.simulation_timed_out_count > self.simulation_candidate_count:
+            raise ValueError("simulation outcome counts must not exceed simulation_candidate_count")
+        if self.stage_a_passed_count > self.stage_a_evaluation_count:
+            raise ValueError("stage_a_passed_count must not exceed stage_a_evaluation_count")
         return self
+
+
+class FamilyLearnerSummary(EngineModel):
+    family: ResearchFamily
+    total_candidates: int = Field(ge=0)
+    simulation_candidate_count: int = Field(ge=0)
+    critique_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    stage_a_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    simulation_timeout_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    submission_ready_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    median_stage_a_sharpe: float | None = None
+    latest_run_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
+    updated_at: datetime
+
+    @field_validator("updated_at")
+    @classmethod
+    def validate_updated_at(cls, value: datetime) -> datetime:
+        return _require_timezone_aware(value, "updated_at")
 
 
 class ValidationBacklogEntry(EngineModel):
