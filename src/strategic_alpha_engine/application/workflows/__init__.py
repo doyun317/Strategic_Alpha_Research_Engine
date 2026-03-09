@@ -3,6 +3,12 @@ from strategic_alpha_engine.application.workflows.research_once import (
     ResearchOnceResult,
     ResearchOnceWorkflow,
 )
+from strategic_alpha_engine.application.workflows.simulate import (
+    SimulationCandidateExecution,
+    SimulationExecutionPolicy,
+    SimulationOrchestratorResult,
+    SimulationOrchestratorWorkflow,
+)
 from strategic_alpha_engine.application.workflows.synthesize import (
     CandidateEvaluation,
     SynthesizeResult,
@@ -15,6 +21,10 @@ __all__ = [
     "PlanWorkflow",
     "ResearchOnceResult",
     "ResearchOnceWorkflow",
+    "SimulationCandidateExecution",
+    "SimulationExecutionPolicy",
+    "SimulationOrchestratorResult",
+    "SimulationOrchestratorWorkflow",
     "SynthesizeResult",
     "SynthesizeWorkflow",
 ]
