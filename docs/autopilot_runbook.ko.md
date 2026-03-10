@@ -109,6 +109,7 @@ packet 자체는 기존 packet run 구조를 그대로 쓴다.
 - `autopilot`은 실제 외부 제출을 하지 않는다.
 - 기본 운영 경로는 `real LLM + real WorldQuant` 이지만, smoke test는 먼저 fake provider로 보는 게 안전하다.
 - LLM endpoint가 느리면 `SAE_LLM_TIMEOUT_SECONDS` 를 늘려야 할 수 있다.
+- 현재 `Qwen/Qwen3-Coder-Next-FP8` 기반 8001 endpoint는 agenda/planner/blueprint/critic 호출이 누적되면 smoke 전체가 수 분까지 늘어날 수 있다.
 - Brain quota / 계정 상태에 따라 live smoke 결과는 달라질 수 있다.
 
 ## 8. 종료 후 확인
