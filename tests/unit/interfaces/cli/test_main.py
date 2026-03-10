@@ -2,226 +2,41 @@ import json
 
 import pytest
 
+from strategic_alpha_engine.domain import ExpressionCandidate, HypothesisSpec, ResearchAgenda, SignalBlueprint
+from strategic_alpha_engine.domain.critique_report import CritiqueReport
 from strategic_alpha_engine.domain.examples import (
+    build_sample_critique_report,
     build_sample_hypothesis_spec,
     build_sample_research_agenda,
     build_sample_signal_blueprint,
 )
-from strategic_alpha_engine.application.services import (
-    RuleBasedStrategicCritic,
-    StaticBlueprintBuilder,
-    StaticHypothesisPlanner,
-)
 from strategic_alpha_engine.interfaces.cli.main import main
-from strategic_alpha_engine.domain.enums import SimulationStatus
-from strategic_alpha_engine.domain import (
-    CritiqueReport,
-    ExpressionCandidate,
-    HypothesisSpec,
-    ResearchAgenda,
-    SignalBlueprint,
-)
 
 
-def test_config_command_prints_runtime_settings(tmp_path, capsys):
-    (tmp_path / "default.env").write_text(
+REMOVED_MANUAL_COMMANDS = [
+    "research-once",
+    "plan",
+    "synthesize",
+    "simulate",
+    "validate",
+    "promote",
+    "review",
+    "packet",
+    "policy",
+    "research-loop",
+]
+
+
+def _write_default_settings(settings_dir, *, include_llm: bool = False, include_brain: bool = False) -> None:
+    settings_dir.mkdir(exist_ok=True)
+    (settings_dir / "default.env").write_text(
         "\n".join(
             [
-                "SAE_ENV=development",
+                "SAE_ENV=test",
                 "SAE_LOG_LEVEL=INFO",
                 "SAE_REGION=USA",
                 "SAE_UNIVERSE=TOP3000",
                 "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    exit_code = main(["config", "--settings-dir", str(tmp_path)])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["region"] == "USA"
-    assert payload["loaded_env_files"] == ["default.env"]
-
-
-def test_config_command_redacts_brain_password(tmp_path, capsys):
-    (tmp_path / "default.env").write_text("SAE_ENV=development\n", encoding="utf-8")
-    (tmp_path / "brain.env").write_text(
-        "\n".join(
-            [
-                "SAE_BRAIN_BASE_URL=https://api.worldquantbrain.com",
-                "SAE_BRAIN_USERNAME=tester@example.com",
-                "SAE_BRAIN_PASSWORD=super-secret",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    exit_code = main(["config", "--settings-dir", str(tmp_path), "--require-brain"])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["brain"]["base_url"] == "https://api.worldquantbrain.com"
-    assert payload["brain"]["username"] == "tester@example.com"
-    assert payload["brain"]["password_configured"] is True
-    assert "password" not in payload["brain"]
-
-
-def test_config_command_reports_missing_required_brain_settings(tmp_path, capsys):
-    (tmp_path / "default.env").write_text("SAE_ENV=development\n", encoding="utf-8")
-
-    with pytest.raises(SystemExit) as exc_info:
-        main(["config", "--settings-dir", str(tmp_path), "--require-brain"])
-
-    captured = capsys.readouterr()
-
-    assert exc_info.value.code == 2
-    assert "Brain settings are required" in captured.err
-
-
-def test_catalog_command_prints_summary(capsys):
-    exit_code = main(["catalog", "--view", "summary"])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["field_count"] >= 1
-    assert "close" in payload["field_ids"]
-
-
-def test_example_command_prints_static_validation_payload(capsys):
-    exit_code = main(["example", "--model", "static_validation"])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["passes"] is True
-    assert payload["validator_name"] == "metadata_backed_static_validator"
-
-
-def test_prompt_command_prints_planner_asset(capsys):
-    exit_code = main(["prompt", "--role", "planner"])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["prompt_id"] == "planner.default.v1"
-    assert payload["role"] == "planner"
-
-
-def test_prompt_command_prints_requested_golden_sample(capsys):
-    exit_code = main(["prompt", "--role", "critic", "--sample-id", "critic.quality_deterioration.001"])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["sample_id"] == "critic.quality_deterioration.001"
-    assert payload["role"] == "critic"
-
-
-def test_plan_command_prints_plan_result(capsys):
-    exit_code = main(["plan"])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["agenda"]["agenda_id"] == "agenda.quality_deterioration.001"
-    assert payload["blueprint"]["hypothesis_id"] == payload["hypothesis"]["hypothesis_id"]
-
-
-def test_plan_command_reads_agenda_file(tmp_path, capsys):
-    agenda_path = tmp_path / "agenda.json"
-    agenda_path.write_text(
-        json.dumps(build_sample_research_agenda().model_dump(mode="json")),
-        encoding="utf-8",
-    )
-
-    exit_code = main(["plan", "--agenda-in", str(agenda_path)])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["agenda"]["agenda_id"] == "agenda.quality_deterioration.001"
-    assert payload["hypothesis"]["agenda_id"] == payload["agenda"]["agenda_id"]
-
-
-def test_plan_command_writes_output_file(tmp_path, capsys):
-    output_path = tmp_path / "artifacts" / "plan.json"
-
-    exit_code = main(["plan", "--out", str(output_path)])
-    captured = capsys.readouterr()
-    payload = json.loads(output_path.read_text(encoding="utf-8"))
-
-    assert exit_code == 0
-    assert captured.out == ""
-    assert payload["blueprint"]["blueprint_id"] == "bp.quality_deterioration.001"
-
-
-def test_synthesize_command_reads_plan_file(tmp_path, capsys):
-    plan_payload = {
-        "agenda": build_sample_research_agenda().model_dump(mode="json"),
-        "hypothesis": build_sample_hypothesis_spec().model_dump(mode="json"),
-        "blueprint": build_sample_signal_blueprint().model_dump(mode="json"),
-    }
-    plan_path = tmp_path / "plan.json"
-    plan_path.write_text(json.dumps(plan_payload), encoding="utf-8")
-
-    exit_code = main(["synthesize", "--plan-in", str(plan_path)])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["hypothesis"]["hypothesis_id"] == "hyp.quality_deterioration.001"
-    assert len(payload["evaluations"]) == 4
-
-
-def test_synthesize_command_reads_hypothesis_and_blueprint_files(tmp_path, capsys):
-    hypothesis_path = tmp_path / "hypothesis.json"
-    blueprint_path = tmp_path / "blueprint.json"
-    hypothesis_path.write_text(
-        json.dumps(build_sample_hypothesis_spec().model_dump(mode="json")),
-        encoding="utf-8",
-    )
-    blueprint_path.write_text(
-        json.dumps(build_sample_signal_blueprint().model_dump(mode="json")),
-        encoding="utf-8",
-    )
-
-    exit_code = main(
-        [
-            "synthesize",
-            "--hypothesis-in",
-            str(hypothesis_path),
-            "--blueprint-in",
-            str(blueprint_path),
-        ]
-    )
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["blueprint"]["blueprint_id"] == "bp.quality_deterioration.001"
-    assert payload["hypothesis"]["agenda_id"] == "agenda.quality_deterioration.001"
-    assert len(payload["accepted_candidate_ids"]) + len(payload["rejected_candidate_ids"]) == len(
-        payload["evaluations"]
-    )
-
-
-def test_simulate_command_persists_artifacts_and_state(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P2Y0M0D",
                 "SAE_SIMULATION_DELAY=1",
                 "SAE_SIMULATION_NEUTRALIZATION=subindustry",
             ]
@@ -229,110 +44,118 @@ def test_simulate_command_persists_artifacts_and_state(tmp_path, capsys):
         + "\n",
         encoding="utf-8",
     )
-    artifacts_dir = tmp_path / "artifacts"
-
-    exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    run_dir = artifacts_dir / "runs" / payload["run_id"]
-    state_dir = artifacts_dir / "state"
-
-    assert exit_code == 0
-    assert payload["family"] == "quality_deterioration"
-    assert payload["policy"]["test_period"] == "P2Y0M0D"
-    assert payload["simulation_status_counts"]["succeeded"] == len(payload["simulated_candidate_ids"])
-    assert payload["promoted_candidate_ids"] == payload["simulated_candidate_ids"]
-    assert payload["family_learner_summary"]["stage_a_pass_rate"] == 1.0
-    assert run_dir.exists()
-    assert (run_dir / "agenda.json").exists()
-    assert (run_dir / "candidates.jsonl").exists()
-    assert (run_dir / "simulations.jsonl").exists()
-    assert (run_dir / "evaluations.jsonl").exists()
-    assert (run_dir / "promotion.jsonl").exists()
-    assert state_dir.exists()
-    assert (state_dir / "candidate_stages.jsonl").exists()
-    assert (state_dir / "run_states.jsonl").exists()
-    assert (state_dir / "family_stats.json").exists()
-    assert (state_dir / "family_learner_summaries.json").exists()
-
-
-def test_autopilot_command_runs_full_fake_pipeline(tmp_path, capsys, monkeypatch):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-                "SAE_SIMULATION_DELAY=1",
-                "SAE_SIMULATION_NEUTRALIZATION=subindustry",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    (settings_dir / "llm.env").write_text(
-        "\n".join(
-            [
-                "SAE_LLM_BASE_URL=http://127.0.0.1:8000/v1",
-                "SAE_LLM_MODEL=test-model",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    agenda_path = tmp_path / "agenda.json"
-    agenda_path.write_text(
-        json.dumps(build_sample_research_agenda().model_dump(mode="json")),
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    class StubStructuredLLMClient:
-        def __init__(self):
-            self.hypothesis_planner = StaticHypothesisPlanner()
-            self.blueprint_builder = StaticBlueprintBuilder()
-            self.critic = RuleBasedStrategicCritic()
-
-        def generate_structured(self, *, asset, input_payload, output_model):
-            if asset.role == "agenda_generator":
-                return output_model(agendas=[], generator_notes=["stub_agenda_generator"])
-            if asset.role == "planner":
-                agenda = ResearchAgenda(**input_payload["agenda"])
-                return output_model(
-                    hypothesis=self.hypothesis_planner.plan(agenda),
-                    planner_notes=["stubbed_planner"],
-                )
-            if asset.role == "blueprint":
-                hypothesis = HypothesisSpec(**input_payload["hypothesis"])
-                return output_model(
-                    blueprint=self.blueprint_builder.build(hypothesis),
-                    design_notes=["stubbed_blueprint"],
-                )
-            hypothesis = HypothesisSpec(**input_payload["hypothesis"])
-            blueprint = SignalBlueprint(**input_payload["blueprint"])
-            candidate = ExpressionCandidate(
-                **{
-                    key: value
-                    for key, value in input_payload["candidate"].items()
-                    if key in ExpressionCandidate.model_fields
-                }
+    if include_llm:
+        (settings_dir / "llm.env").write_text(
+            "\n".join(
+                [
+                    "SAE_LLM_BASE_URL=http://127.0.0.1:8000/v1",
+                    "SAE_LLM_MODEL=test-model",
+                ]
             )
+            + "\n",
+            encoding="utf-8",
+        )
+    if include_brain:
+        (settings_dir / "brain.env").write_text(
+            "\n".join(
+                [
+                    "SAE_BRAIN_BASE_URL=https://api.worldquantbrain.com",
+                    "SAE_BRAIN_USERNAME=tester@example.com",
+                    "SAE_BRAIN_PASSWORD=super-secret",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+
+def _enum_value(value) -> str:
+    return value.value if hasattr(value, "value") else str(value)
+
+
+def _build_hypothesis_for_agenda(agenda: ResearchAgenda) -> HypothesisSpec:
+    sample = build_sample_hypothesis_spec()
+    family_value = _enum_value(agenda.family)
+    return sample.model_copy(
+        update={
+            "hypothesis_id": "hyp.autopilot.001",
+            "agenda_id": agenda.agenda_id,
+            "family": agenda.family,
+            "horizon": agenda.target_horizons[0],
+            "target_region": agenda.target_region,
+            "target_universe": agenda.target_universe,
+            "thesis_name": f"{family_value.replace('_', ' ')} autopilot hypothesis",
+            "author": "autopilot",
+        }
+    )
+
+
+def _build_blueprint_for_hypothesis(hypothesis: HypothesisSpec) -> SignalBlueprint:
+    sample = build_sample_signal_blueprint()
+    family_value = _enum_value(hypothesis.family)
+    return sample.model_copy(
+        update={
+            "blueprint_id": "bp.autopilot.001",
+            "hypothesis_id": hypothesis.hypothesis_id,
+            "summary": f"Autopilot blueprint for {family_value}.",
+        }
+    )
+
+
+def _build_critique_for_candidate(candidate: ExpressionCandidate, blueprint: SignalBlueprint) -> CritiqueReport:
+    sample = build_sample_critique_report()
+    return sample.model_copy(
+        update={
+            "critique_id": f"critique.{candidate.candidate_id}",
+            "candidate_id": candidate.candidate_id,
+            "blueprint_id": blueprint.blueprint_id,
+        }
+    )
+
+
+class StubStructuredLLMClient:
+    def generate_structured(self, *, asset, input_payload, output_model):
+        if asset.role == "agenda_generator":
+            return output_model(agendas=[], generator_notes=["stub_agenda_generator"])
+
+        if asset.role == "planner":
+            agenda = ResearchAgenda(**input_payload["agenda"])
             return output_model(
-                critique=self.critic.critique(hypothesis, blueprint, candidate)
+                hypothesis=_build_hypothesis_for_agenda(agenda),
+                planner_notes=["stubbed_planner"],
             )
 
+        if asset.role == "blueprint":
+            hypothesis = HypothesisSpec(**input_payload["hypothesis"])
+            return output_model(
+                blueprint=_build_blueprint_for_hypothesis(hypothesis),
+                design_notes=["stubbed_blueprint"],
+            )
+
+        hypothesis = HypothesisSpec(**input_payload["hypothesis"])
+        blueprint = SignalBlueprint(**input_payload["blueprint"])
+        candidate = ExpressionCandidate(
+            **{
+                key: value
+                for key, value in input_payload["candidate"].items()
+                if key in ExpressionCandidate.model_fields
+            }
+        )
+        return output_model(
+            critique=_build_critique_for_candidate(candidate, blueprint),
+        )
+
+
+def _run_fake_autopilot(tmp_path, monkeypatch, capsys):
+    settings_dir = tmp_path / "settings"
+    artifacts_dir = tmp_path / "artifacts"
+    agenda_path = tmp_path / "agenda.json"
+
+    _write_default_settings(settings_dir, include_llm=True)
+    agenda_path.write_text(
+        json.dumps(build_sample_research_agenda().model_dump(mode="json")),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         "strategic_alpha_engine.interfaces.cli.autopilot_runtime.build_structured_llm_client",
         lambda settings: StubStructuredLLMClient(),
@@ -355,10 +178,115 @@ def test_autopilot_command_runs_full_fake_pipeline(tmp_path, capsys, monkeypatch
             "1",
             "--max-agendas",
             "1",
+            "--max-simulations",
+            "1",
+            "--idle-rounds",
+            "1",
         ]
     )
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
+    payload = json.loads(capsys.readouterr().out)
+    return exit_code, payload, artifacts_dir
+
+
+def test_config_command_prints_runtime_settings(tmp_path, capsys):
+    _write_default_settings(tmp_path)
+
+    exit_code = main(["config", "--settings-dir", str(tmp_path)])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["region"] == "USA"
+    assert payload["loaded_env_files"] == ["default.env"]
+
+
+def test_config_command_redacts_brain_password(tmp_path, capsys):
+    _write_default_settings(tmp_path, include_brain=True)
+
+    exit_code = main(["config", "--settings-dir", str(tmp_path), "--require-brain"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["brain"]["base_url"] == "https://api.worldquantbrain.com"
+    assert payload["brain"]["username"] == "tester@example.com"
+    assert payload["brain"]["password_configured"] is True
+    assert "password" not in payload["brain"]
+
+
+def test_config_command_reports_missing_required_brain_settings(tmp_path, capsys):
+    _write_default_settings(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["config", "--settings-dir", str(tmp_path), "--require-brain"])
+
+    assert exc_info.value.code == 2
+    assert "Brain settings are required" in capsys.readouterr().err
+
+
+def test_catalog_command_prints_summary(capsys):
+    exit_code = main(["catalog", "--view", "summary"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["field_count"] >= 1
+    assert "close" in payload["field_ids"]
+
+
+def test_schema_command_prints_candidate_schema(capsys):
+    exit_code = main(["schema", "--model", "candidate"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["title"] == "ExpressionCandidate"
+    assert "properties" in payload
+
+
+def test_example_command_prints_static_validation_payload(capsys):
+    exit_code = main(["example", "--model", "static_validation"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["passes"] is True
+    assert payload["validator_name"] == "metadata_backed_static_validator"
+
+
+def test_prompt_command_prints_planner_asset(capsys):
+    exit_code = main(["prompt", "--role", "planner"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["prompt_id"] == "planner.default.v1"
+    assert payload["role"] == "planner"
+
+
+def test_prompt_command_prints_agenda_generator_asset(capsys):
+    exit_code = main(["prompt", "--role", "agenda_generator"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["prompt_id"] == "agenda_generator.default.v1"
+    assert payload["role"] == "agenda_generator"
+
+
+def test_prompt_command_prints_requested_golden_sample(capsys):
+    exit_code = main(["prompt", "--role", "critic", "--sample-id", "critic.quality_deterioration.001"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["sample_id"] == "critic.quality_deterioration.001"
+    assert payload["role"] == "critic"
+
+
+@pytest.mark.parametrize("command", REMOVED_MANUAL_COMMANDS)
+def test_removed_manual_commands_are_invalid_choices(command, capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        main([command])
+
+    assert exc_info.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_autopilot_command_runs_full_fake_pipeline(tmp_path, capsys, monkeypatch):
+    exit_code, payload, artifacts_dir = _run_fake_autopilot(tmp_path, monkeypatch, capsys)
 
     assert exit_code == 0
     assert payload["latest_submission_manifest"]["selected_packet_count"] == 1
@@ -367,782 +295,21 @@ def test_autopilot_command_runs_full_fake_pipeline(tmp_path, capsys, monkeypatch
     assert (artifacts_dir / "state" / "submission_packet_index.jsonl").exists()
 
 
-def test_simulate_command_accepts_worldquant_provider_with_stubbed_client(tmp_path, capsys, monkeypatch):
-    from datetime import datetime, timezone
-
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P2Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
+def test_status_command_reports_autopilot_summary(tmp_path, capsys, monkeypatch):
+    autopilot_exit_code, autopilot_payload, artifacts_dir = _run_fake_autopilot(
+        tmp_path,
+        monkeypatch,
+        capsys,
     )
-    (settings_dir / "brain.env").write_text(
-        "\n".join(
-            [
-                "SAE_BRAIN_BASE_URL=https://api.worldquantbrain.com",
-                "SAE_BRAIN_USERNAME=tester@example.com",
-                "SAE_BRAIN_PASSWORD=secret-pass",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    class StubWorldQuantBrainSimulationClient:
-        def __init__(self, settings):
-            self.settings = settings
-            self._submission = None
-
-        def submit(self, request):
-            from strategic_alpha_engine.application.contracts import BrainSimulationSubmission
-
-            self._submission = BrainSimulationSubmission(
-                simulation_request_id=request.simulation_request_id,
-                provider_run_id="https://api.worldquantbrain.com/simulations/progress/test-001",
-                status=SimulationStatus.SUBMITTED,
-                accepted_at=requested_at,
-                provider_message="submitted to stub worldquant queue",
-            )
-            self._request = request
-            return self._submission
-
-        def poll(self, provider_run_id):
-            from strategic_alpha_engine.application.contracts import BrainSimulationPollResult
-
-            return BrainSimulationPollResult(
-                provider_run_id=provider_run_id,
-                status=SimulationStatus.SUCCEEDED,
-                observed_at=requested_at,
-                provider_message="stub complete",
-            )
-
-        def fetch_result(self, provider_run_id):
-            from strategic_alpha_engine.application.contracts import BrainSimulationResult
-
-            return BrainSimulationResult(
-                simulation_request_id=self._request.simulation_request_id,
-                candidate_id=self._request.candidate_id,
-                provider_run_id=provider_run_id,
-                status=SimulationStatus.SUCCEEDED,
-                completed_at=requested_at,
-                sharpe=1.2,
-                fitness=0.9,
-                turnover=0.2,
-                returns=0.05,
-                drawdown=0.03,
-                checks=["stubbed_worldquant"],
-                grade="A",
-                raw_response={"provider": "stub_worldquant"},
-            )
-
-    requested_at = datetime(2026, 3, 9, 9, 0, tzinfo=timezone.utc)
-
-    monkeypatch.setattr(
-        "strategic_alpha_engine.interfaces.cli.main.WorldQuantBrainSimulationClient",
-        StubWorldQuantBrainSimulationClient,
-    )
-
-    exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--brain-provider",
-            "worldquant",
-        ]
-    )
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["brain_provider"] == "worldquant"
-    assert payload["simulation_status_counts"]["succeeded"] == len(payload["simulated_candidate_ids"])
-
-
-def test_status_command_summarizes_local_ledgers(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    simulate_exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    _ = capsys.readouterr()
-
-    exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert simulate_exit_code == 0
-    assert exit_code == 0
-    assert payload["loop_status"]["current_state"] == "not_started"
-    assert payload["agenda_status"]["latest_family"] == "quality_deterioration"
-    assert payload["validation_backlog"]["total_entries"] == 0
-    assert payload["agenda_queue"]["total_entries"] == 0
-    assert payload["candidate_stage_counts"]["sim_passed"] == 4
-    assert payload["runs"]["counts_by_kind"]["simulate"] == 1
-    assert payload["family_stats"][0]["sim_passed_candidates"] == 4
-    assert payload["family_stats"][0]["median_stage_a_sharpe"] == 1.21
-    assert payload["family_learner_summaries"][0]["stage_a_pass_rate"] == 1.0
-    assert payload["learner_recommendations"][0]["family"] == "quality_deterioration"
-    assert payload["validation_summary"]["total_records"] == 0
-    assert payload["validation_matrix"]["total_candidates"] == 0
-    assert payload["robust_promotion_summary"]["total_decisions"] == 0
-    assert payload["submission_ready_inventory"]["total_candidates"] == 0
-    assert payload["human_review_queue"]["total_entries"] == 0
-    assert payload["human_review_summary"]["total_decisions"] == 0
-
-
-def test_policy_command_ranks_families_and_weights_agendas(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-    quality_agenda_path = tmp_path / "quality_agenda.json"
-    momentum_agenda_path = tmp_path / "momentum_agenda.json"
-    quality_agenda_path.write_text(
-        json.dumps(build_sample_research_agenda().model_dump(mode="json")),
-        encoding="utf-8",
-    )
-    momentum_agenda_path.write_text(
-        json.dumps(
-            build_sample_research_agenda().model_copy(
-                update={
-                    "agenda_id": "agenda.momentum.001",
-                    "name": "Momentum continuation queue",
-                    "family": "momentum",
-                    "priority": 0.65,
-                    "tags": ["momentum", "medium_horizon"],
-                }
-            ).model_dump(mode="json")
-        ),
-        encoding="utf-8",
-    )
-
-    simulate_exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    _ = capsys.readouterr()
-
-    exit_code = main(
-        [
-            "policy",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--agenda-in",
-            str(quality_agenda_path),
-            "--agenda-in",
-            str(momentum_agenda_path),
-        ]
-    )
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert simulate_exit_code == 0
-    assert exit_code == 0
-    assert payload["family_recommendations"][0]["family"] == "quality_deterioration"
-    assert payload["agenda_recommendations"][0]["agenda_id"] == "agenda.quality_deterioration.001"
-    assert payload["agenda_recommendations"][0]["adjusted_priority"] > payload["agenda_recommendations"][1]["adjusted_priority"]
-
-
-def test_research_loop_command_executes_multiple_iterations_and_updates_queue_state(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    exit_code = main(
-        [
-            "research-loop",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--iterations",
-            "2",
-        ]
-    )
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-
-    assert exit_code == 0
-    assert payload["completed_iterations"] == 2
-    assert payload["stopped_reason"] == "completed_requested_iterations"
-    assert payload["iteration_runs"][0]["selected_agenda_id"] == "agenda.quality_deterioration.001"
-    assert payload["iteration_runs"][1]["selected_agenda_id"] == "agenda.momentum.001"
-    assert payload["executed_agenda_ids"] == [
-        "agenda.quality_deterioration.001",
-        "agenda.momentum.001",
-    ]
-
-    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
-    status_captured = capsys.readouterr()
-    status_payload = json.loads(status_captured.out)
-
-    assert status_exit_code == 0
-    assert status_payload["loop_status"]["current_state"] == "idle"
-    assert status_payload["runs"]["counts_by_kind"]["research_loop"] == 2
-    assert status_payload["agenda_queue"]["selected_agenda_id"] == "agenda.momentum.001"
-    assert status_payload["agenda_queue"]["total_entries"] == 3
-    assert status_payload["candidate_stage_counts"]["sim_passed"] == 7
-    assert status_payload["validation_matrix"]["total_candidates"] == 0
-    assert status_payload["robust_promotion_summary"]["total_decisions"] == 0
-    assert status_payload["submission_ready_inventory"]["total_candidates"] == 0
-    assert status_payload["human_review_queue"]["total_entries"] == 0
-
-
-def test_validate_command_persists_validation_artifacts_and_updates_status(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    simulate_exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    simulate_captured = capsys.readouterr()
-    simulate_payload = json.loads(simulate_captured.out)
-
-    validate_exit_code = main(
-        [
-            "validate",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            simulate_payload["run_id"],
-            "--period",
-            "P3Y0M0D",
-        ]
-    )
-    validate_captured = capsys.readouterr()
-    validate_payload = json.loads(validate_captured.out)
-
-    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
-    status_captured = capsys.readouterr()
-    status_payload = json.loads(status_captured.out)
-
-    run_dir = artifacts_dir / "runs" / validate_payload["run_id"]
-
-    assert simulate_exit_code == 0
-    assert validate_exit_code == 0
-    assert status_exit_code == 0
-    assert validate_payload["validation_stage"] == "stage_b"
-    assert validate_payload["requested_periods"] == ["P3Y0M0D"]
-    assert len(validate_payload["validated_candidate_ids"]) == 4
-    assert validate_payload["passed_candidate_ids"] == validate_payload["validated_candidate_ids"]
-    assert (run_dir / "validations.jsonl").exists()
-    assert (run_dir / "robust_promotion.jsonl").exists()
-    assert validate_payload["validation_matrix"]["required_passing_periods"] == 1
-    assert validate_payload["robust_promoted_candidate_ids"] == [
-        "cand.bp.quality_deterioration.001.001",
-        "cand.bp.quality_deterioration.001.002",
-    ]
-    assert len(validate_payload["robust_held_candidate_ids"]) == 2
-    assert validate_payload["robust_rejected_candidate_ids"] == []
-    assert validate_payload["robust_promotion_summary"]["counts_by_decision"]["hold"] == 2
-    assert validate_payload["robust_promotion_summary"]["counts_by_decision"]["promote"] == 2
-    assert status_payload["validation_backlog"]["counts_by_status"]["completed"] == 4
-    assert status_payload["validation_summary"]["total_records"] == 4
-    assert status_payload["validation_summary"]["counts_by_stage"]["stage_b"] == 4
-    assert status_payload["validation_matrix"]["total_candidates"] == 4
-    assert status_payload["validation_matrix"]["required_passing_periods"] == 1
-    assert status_payload["robust_promotion_summary"]["counts_by_decision"]["hold"] == 2
-    assert status_payload["robust_promotion_summary"]["counts_by_decision"]["promote"] == 2
-    assert status_payload["candidate_stage_counts"]["robust_candidate"] == 2
-    assert status_payload["candidate_stage_counts"]["sim_passed"] == 2
-    assert status_payload["family_stats"][0]["robust_candidates"] == 2
-    assert status_payload["runs"]["counts_by_kind"]["validate"] == 1
-
-
-def test_validate_command_defaults_to_multi_period_stage_b(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    simulate_exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    simulate_captured = capsys.readouterr()
-    simulate_payload = json.loads(simulate_captured.out)
-
-    validate_exit_code = main(
-        [
-            "validate",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            simulate_payload["run_id"],
-        ]
-    )
-    validate_captured = capsys.readouterr()
-    validate_payload = json.loads(validate_captured.out)
-
-    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
-    status_captured = capsys.readouterr()
-    status_payload = json.loads(status_captured.out)
-
-    assert simulate_exit_code == 0
-    assert validate_exit_code == 0
-    assert status_exit_code == 0
-    assert validate_payload["requested_periods"] == ["P1Y0M0D", "P3Y0M0D", "P5Y0M0D"]
-    assert validate_payload["validation_summary"]["total_records"] == 12
-    assert validate_payload["validation_matrix"]["required_passing_periods"] == 2
-    assert validate_payload["validation_matrix"]["total_candidates"] == 4
-    assert validate_payload["robust_promoted_candidate_ids"] == [
-        "cand.bp.quality_deterioration.001.001",
-        "cand.bp.quality_deterioration.001.002",
-    ]
-    assert len(validate_payload["robust_held_candidate_ids"]) == 2
-    assert status_payload["validation_backlog"]["counts_by_status"]["completed"] == 12
-    assert status_payload["validation_summary"]["total_records"] == 12
-    assert status_payload["validation_summary"]["counts_by_period"]["P5Y0M0D"] == 4
-    assert status_payload["validation_matrix"]["required_passing_periods"] == 2
-    assert status_payload["validation_matrix"]["passed_candidate_count"] == 4
-    assert status_payload["robust_promotion_summary"]["counts_by_decision"]["promote"] == 2
-    assert status_payload["robust_promotion_summary"]["counts_by_decision"]["hold"] == 2
-    assert status_payload["candidate_stage_counts"]["robust_candidate"] == 2
-    assert status_payload["candidate_stage_counts"]["sim_passed"] == 2
-
-
-def test_validate_command_uses_latest_stage_state_and_does_not_repromote_duplicates(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    simulate_exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    simulate_captured = capsys.readouterr()
-    simulate_payload = json.loads(simulate_captured.out)
-
-    first_validate_exit_code = main(
-        [
-            "validate",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            simulate_payload["run_id"],
-        ]
-    )
-    first_validate_captured = capsys.readouterr()
-    first_validate_payload = json.loads(first_validate_captured.out)
-
-    second_validate_exit_code = main(
-        [
-            "validate",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            simulate_payload["run_id"],
-        ]
-    )
-    second_validate_captured = capsys.readouterr()
-    second_validate_payload = json.loads(second_validate_captured.out)
-
-    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
-    status_captured = capsys.readouterr()
-    status_payload = json.loads(status_captured.out)
-
-    assert simulate_exit_code == 0
-    assert first_validate_exit_code == 0
-    assert second_validate_exit_code == 0
-    assert first_validate_payload["robust_promoted_candidate_ids"] == [
-        "cand.bp.quality_deterioration.001.001",
-        "cand.bp.quality_deterioration.001.002",
-    ]
-    assert second_validate_payload["validated_candidate_ids"] == [
-        "cand.bp.quality_deterioration.001.003",
-        "cand.bp.quality_deterioration.001.004",
-    ]
-    assert second_validate_payload["robust_promoted_candidate_ids"] == []
-    assert len(second_validate_payload["robust_held_candidate_ids"]) == 2
-    assert status_exit_code == 0
-    assert status_payload["candidate_stage_counts"]["robust_candidate"] == 2
-
-
-def test_promote_command_creates_submission_ready_inventory_and_updates_status(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    simulate_exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    simulate_payload = json.loads(capsys.readouterr().out)
-
-    validate_exit_code = main(
-        [
-            "validate",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            simulate_payload["run_id"],
-        ]
-    )
-    validate_payload = json.loads(capsys.readouterr().out)
-
-    promote_exit_code = main(
-        [
-            "promote",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            validate_payload["run_id"],
-        ]
-    )
-    promote_payload = json.loads(capsys.readouterr().out)
 
     status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
     status_payload = json.loads(capsys.readouterr().out)
 
-    run_dir = artifacts_dir / "runs" / promote_payload["run_id"]
-
-    assert simulate_exit_code == 0
-    assert validate_exit_code == 0
-    assert promote_exit_code == 0
+    assert autopilot_exit_code == 0
     assert status_exit_code == 0
-    assert promote_payload["source_validate_run_id"] == validate_payload["run_id"]
-    assert promote_payload["submission_ready_candidate_ids"] == [
-        "cand.bp.quality_deterioration.001.001",
-        "cand.bp.quality_deterioration.001.002",
-    ]
-    assert promote_payload["queued_review_candidate_ids"] == promote_payload["submission_ready_candidate_ids"]
-    assert (run_dir / "submission_ready.jsonl").exists()
-    assert promote_payload["submission_ready_inventory"]["total_candidates"] == 2
-    assert promote_payload["human_review_queue"]["counts_by_status"]["pending"] == 2
-    assert status_payload["submission_ready_inventory"]["total_candidates"] == 2
-    assert status_payload["submission_ready_inventory"]["latest_run_id"] == promote_payload["run_id"]
-    assert status_payload["human_review_queue"]["counts_by_status"]["pending"] == 2
-    assert status_payload["candidate_stage_counts"]["submission_ready"] == 2
-    assert status_payload["candidate_stage_counts"]["robust_candidate"] == 0
-    assert status_payload["candidate_stage_counts"]["sim_passed"] == 2
-    assert status_payload["family_stats"][0]["submission_ready_candidates"] == 2
-    assert status_payload["runs"]["counts_by_kind"]["promote"] == 1
-
-
-def test_review_command_holds_submission_ready_candidate_and_filters_inventory(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    simulate_exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    simulate_payload = json.loads(capsys.readouterr().out)
-
-    validate_exit_code = main(
-        [
-            "validate",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            simulate_payload["run_id"],
-        ]
-    )
-    validate_payload = json.loads(capsys.readouterr().out)
-
-    promote_exit_code = main(
-        [
-            "promote",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            validate_payload["run_id"],
-        ]
-    )
-    promote_payload = json.loads(capsys.readouterr().out)
-
-    review_exit_code = main(
-        [
-            "review",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            promote_payload["run_id"],
-            "--candidate-id",
-            "cand.bp.quality_deterioration.001.001",
-            "--decision",
-            "hold",
-            "--reviewer",
-            "reviewer_01",
-            "--note",
-            "needs manual follow-up",
-        ]
-    )
-    review_payload = json.loads(capsys.readouterr().out)
-
-    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
-    status_payload = json.loads(capsys.readouterr().out)
-
-    run_dir = artifacts_dir / "runs" / review_payload["run_id"]
-
-    assert simulate_exit_code == 0
-    assert validate_exit_code == 0
-    assert promote_exit_code == 0
-    assert review_exit_code == 0
-    assert status_exit_code == 0
-    assert review_payload["held_candidate_ids"] == ["cand.bp.quality_deterioration.001.001"]
-    assert review_payload["approved_candidate_ids"] == []
-    assert review_payload["submission_ready_inventory"]["total_candidates"] == 1
-    assert review_payload["human_review_queue"]["counts_by_status"]["held"] == 1
-    assert review_payload["human_review_queue"]["counts_by_status"]["pending"] == 1
-    assert review_payload["human_review_summary"]["counts_by_decision"]["hold"] == 1
-    assert (run_dir / "human_review.jsonl").exists()
-    assert (run_dir / "review_queue.jsonl").exists()
-    assert status_payload["submission_ready_inventory"]["total_candidates"] == 1
-    assert status_payload["human_review_queue"]["counts_by_status"]["held"] == 1
-    assert status_payload["human_review_queue"]["counts_by_status"]["pending"] == 1
-    assert status_payload["candidate_stage_counts"]["submission_ready"] == 1
-    assert status_payload["candidate_stage_counts"]["robust_candidate"] == 1
-    assert status_payload["family_stats"][0]["submission_ready_candidates"] == 1
-    assert status_payload["family_stats"][0]["robust_candidates"] == 2
-    assert status_payload["runs"]["counts_by_kind"]["review"] == 1
-
-
-def test_packet_command_generates_submission_packet_and_updates_status(tmp_path, capsys):
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "default.env").write_text(
-        "\n".join(
-            [
-                "SAE_ENV=test",
-                "SAE_REGION=USA",
-                "SAE_UNIVERSE=TOP3000",
-                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    artifacts_dir = tmp_path / "artifacts"
-
-    simulate_exit_code = main(
-        [
-            "simulate",
-            "--settings-dir",
-            str(settings_dir),
-            "--artifacts-dir",
-            str(artifacts_dir),
-        ]
-    )
-    simulate_payload = json.loads(capsys.readouterr().out)
-
-    validate_exit_code = main(
-        [
-            "validate",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            simulate_payload["run_id"],
-        ]
-    )
-    validate_payload = json.loads(capsys.readouterr().out)
-
-    promote_exit_code = main(
-        [
-            "promote",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            validate_payload["run_id"],
-        ]
-    )
-    promote_payload = json.loads(capsys.readouterr().out)
-
-    review_exit_code = main(
-        [
-            "review",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            promote_payload["run_id"],
-            "--candidate-id",
-            "cand.bp.quality_deterioration.001.001",
-            "--decision",
-            "approve",
-            "--reviewer",
-            "reviewer_01",
-        ]
-    )
-    review_payload = json.loads(capsys.readouterr().out)
-
-    packet_exit_code = main(
-        [
-            "packet",
-            "--artifacts-dir",
-            str(artifacts_dir),
-            "--source-run-id",
-            review_payload["run_id"],
-        ]
-    )
-    packet_payload = json.loads(capsys.readouterr().out)
-
-    status_exit_code = main(["status", "--artifacts-dir", str(artifacts_dir)])
-    status_payload = json.loads(capsys.readouterr().out)
-
-    run_dir = artifacts_dir / "runs" / packet_payload["run_id"]
-
-    assert simulate_exit_code == 0
-    assert validate_exit_code == 0
-    assert promote_exit_code == 0
-    assert review_exit_code == 0
-    assert packet_exit_code == 0
-    assert status_exit_code == 0
-    assert packet_payload["source_review_run_id"] == review_payload["run_id"]
-    assert packet_payload["candidate_ids"] == ["cand.bp.quality_deterioration.001.001"]
-    assert len(packet_payload["packet_ids"]) == 1
-    assert packet_payload["submission_packet_summary"]["total_packets"] == 1
-    assert (run_dir / "submission_packets.jsonl").exists()
-    assert (run_dir / "packets" / "cand.bp.quality_deterioration.001.001.json").exists()
-    assert status_payload["submission_packet_summary"]["latest_run_id"] == packet_payload["run_id"]
-    assert status_payload["submission_packet_summary"]["total_packets"] == 1
-    assert status_payload["submission_packet_summary"]["candidate_ids"] == [
-        "cand.bp.quality_deterioration.001.001"
-    ]
-    assert status_payload["runs"]["counts_by_kind"]["packet"] == 1
+    assert status_payload["autopilot_status"]["current_state"] == "idle"
+    assert status_payload["autopilot_status"]["latest_run_id"] == autopilot_payload["run_id"]
+    assert status_payload["autopilot_status"]["ready_for_submission_packet_count"] == 1
+    assert status_payload["latest_submission_manifest"]["selected_packet_count"] == 1
+    assert status_payload["submission_packet_index"]["unique_signatures"] >= 1
+    assert status_payload["runs"]["counts_by_kind"]["autopilot"] == 1
