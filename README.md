@@ -1,18 +1,19 @@
 # Strategic Alpha Research Engine
 
-Greenfield scaffold for a strategic alpha research system built around:
+Autopilot-first alpha research system built around:
 
-- `Research Agenda -> Hypothesis Spec -> Signal Blueprint -> Expression Candidates`
-- structured validation and critique before simulation
-- explicit artifact lineage instead of expression-only generation
+- `ResearchAgenda -> HypothesisSpec -> SignalBlueprint -> ExpressionCandidate`
+- structured LLM generation with metadata-aware validation
+- WorldQuant Brain simulation orchestration
+- local artifact/state ledgers with submission packet lineage
+- `autopilot` as the single operational runtime entrypoint
 
 Current status:
-- architecture spec exists
-- MVP scope doc exists
-- repository scaffold exists
-- `HypothesisSpec` and `SignalBlueprint` are implemented as validated Pydantic schemas
-- Phase 1 structured-generation foundation exists
-- `research-once` static workflow is available
+
+- Phase 1 through Phase 6 implementation is complete
+- runtime usage is now `autopilot`-centric
+- earlier standalone entrypoints were retired from the public CLI surface
+- internal planning / synthesis / simulation / validation / promotion / review / packet workflows remain as shared engine components used by `autopilot`
 
 ## Documents
 
@@ -46,7 +47,7 @@ cd /workspace/Strategic_Alpha_Research_Engine
 uv venv .venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
-pytest
+./.venv/bin/pytest -q
 ```
 
 ## Local Environment Files
@@ -77,6 +78,7 @@ Inspect resolved runtime settings:
 ```bash
 python -m strategic_alpha_engine config
 python -m strategic_alpha_engine config --require-llm
+python -m strategic_alpha_engine config --require-brain
 ```
 
 Inspect seeded metadata catalog:
@@ -95,85 +97,29 @@ python -m strategic_alpha_engine prompt --role critic --sample-id critic.quality
 python -m strategic_alpha_engine prompt --role agenda_generator
 ```
 
-Run planning and synthesis separately:
+Run the autopilot alpha factory:
 
 ```bash
-python -m strategic_alpha_engine plan
-python -m strategic_alpha_engine synthesize
+ART=artifacts
 
-# or persist intermediate JSON locally
-python -m strategic_alpha_engine plan --out tmp/plan.json
-python -m strategic_alpha_engine synthesize --plan-in tmp/plan.json --out tmp/synthesis.json
+# fake provider smoke
+python -m strategic_alpha_engine autopilot --artifacts-dir "$ART" --brain-provider fake
 ```
 
-Run simulation and inspect local status:
+Production-style run:
 
 ```bash
-# current simulate command uses the fake Brain adapter, evaluates Stage A,
-# and persists local ledgers plus evaluation/promotion artifacts
-python -m strategic_alpha_engine simulate --artifacts-dir artifacts
-python -m strategic_alpha_engine validate --artifacts-dir artifacts
-python -m strategic_alpha_engine promote --artifacts-dir artifacts
-python -m strategic_alpha_engine review --artifacts-dir artifacts --decision approve
-python -m strategic_alpha_engine packet --artifacts-dir artifacts
-
-# use the real WorldQuant Brain client instead of the fake adapter
-# this requires settings/brain.env with SAE_BRAIN_BASE_URL, SAE_BRAIN_USERNAME, SAE_BRAIN_PASSWORD
-python -m strategic_alpha_engine simulate --artifacts-dir artifacts --brain-provider worldquant
-
-# optionally run a single explicit validation window instead of the default
-# stage_b multi-period set: P1Y0M0D, P3Y0M0D, P5Y0M0D
-python -m strategic_alpha_engine validate --artifacts-dir artifacts --period P3Y0M0D
-
-# validate writes robust_promotion.jsonl and updates candidate stages,
-# promote advances robust candidates into the submission-ready inventory and queue,
-# review resolves pending human-review items,
-# and packet materializes approved candidates into self-contained submission artifacts
-# status now includes validation_summary, validation_matrix,
-# robust_promotion_summary, submission_ready_inventory,
-# human_review_queue, human_review_summary, and submission_packet_summary
-python -m strategic_alpha_engine status --artifacts-dir artifacts
-
-# optional: persist the status summary report
-python -m strategic_alpha_engine status --artifacts-dir artifacts --out artifacts/reports/latest_status.json
+python -m strategic_alpha_engine autopilot --artifacts-dir "$ART" --brain-provider worldquant
 ```
 
-Run the full autopilot alpha factory and emit a submission manifest:
+Inspect runtime outputs:
 
 ```bash
-# autopilot requires LLM settings, and worldquant mode also requires Brain settings
-python -m strategic_alpha_engine autopilot --artifacts-dir artifacts --brain-provider fake
-
-# production-style path: real LLM + real WorldQuant Brain
-python -m strategic_alpha_engine autopilot --artifacts-dir artifacts --brain-provider worldquant
-
-# inspect the latest manifest and cumulative packet index
-python -m strategic_alpha_engine status --artifacts-dir artifacts
+python -m strategic_alpha_engine status --artifacts-dir "$ART"
+cat "$ART/state/latest_submission_manifest.json"
 ```
 
-Inspect learner recommendations and optionally weight agendas:
-
-```bash
-python -m strategic_alpha_engine policy --artifacts-dir artifacts
-
-# optionally pass multiple agenda payloads to get family-weighted priorities
-python -m strategic_alpha_engine policy \
-  --artifacts-dir artifacts \
-  --agenda-in tmp/agenda_quality.json \
-  --agenda-in tmp/agenda_momentum.json
-```
-
-Run a bounded research loop across prioritized agendas:
-
-```bash
-# without --agenda-in, the command uses the built-in sample agenda pool
-python -m strategic_alpha_engine research-loop --artifacts-dir artifacts --iterations 2
-
-# inspect queue state and latest loop recommendation snapshot
-python -m strategic_alpha_engine status --artifacts-dir artifacts
-```
-
-## Schema Commands
+## Developer Commands
 
 Print JSON schema:
 
@@ -190,12 +136,6 @@ python -m strategic_alpha_engine example --model blueprint
 python -m strategic_alpha_engine example --model agenda
 ```
 
-Run one static research workflow:
-
-```bash
-python -m strategic_alpha_engine research-once
-```
-
 ## Current Package Layout
 
 ```text
@@ -209,37 +149,24 @@ src/strategic_alpha_engine/
 ```
 
 Current implementation includes:
+
 - domain schemas for agenda, hypothesis, blueprint, candidate, critique
 - metadata-backed static validator before critique
 - prompt assets and golden samples for agenda_generator / planner / blueprint / critic roles
-- standalone `plan`, `synthesize`, `simulate`, and `status` CLI workflows
 - immutable simulation request / run domain models
-- Brain simulation client contract and fake adapter
-- simulation orchestrator workflow for critique-passed candidates
+- Brain simulation client contract, fake adapter, and optional WorldQuant adapter
+- simulation orchestration for critique-passed candidates
 - Stage A evaluation records and rule-based promotion decisions after simulation
-- ValidationRecord domain, validation artifacts, and standalone `validate` CLI
-- multi-period validation runner with latest validation matrix summary in `status`
-- robust candidate promotion after validation, including diversity guard and `robust_promotion.jsonl`
-- submission-ready promotion workflow and `promote` CLI
-- submission-ready artifact/state ledgers with inventory summary in `status`
-- pending human review queue created from promote runs
-- `review` CLI with approve / hold / reject decisions and human review ledgers
-- `packet` CLI with self-contained submission packet artifacts for approved candidates
-- `autopilot` CLI for agenda generation through packet + latest submission manifest
+- ValidationRecord domain, validation artifacts, and multi-period validation runner
+- robust candidate promotion, submission-ready ledgers, and human review artifacts
+- submission packet generation with cumulative packet index and latest submission manifest
+- `autopilot` CLI for agenda generation through packet + manifest
 - OpenAI-compatible structured LLM client with schema/empty-response retry policy
 - hybrid agenda generation with template seeding and LLM augmentation
-- autopilot submission packet index and latest submission manifest in local state
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
-- optional real WorldQuant Brain simulation client behind `--brain-provider worldquant`
-- local agenda queue ledger and bounded `research-loop` execution mode
-- artifact persistence for `evaluations.jsonl`, `promotion.jsonl`, and `robust_promotion.jsonl`
-- validation backlog tracking and validation summary in `status`
-- learner-ready family stats and `family_learner_summaries.json`
-- heuristic family policy recommendations and agenda weighting via `policy`
-- static planner and blueprint builder
+- learner-ready family stats and family weighting used by agenda generation
 - skeleton-based candidate synthesizer
-- rule-based strategic critic
-- `research-once` workflow scaffold
+- structured LLM-backed planner / blueprint builder / critic
 
 Automatic external submission and review UI are still intentionally left out of scope.

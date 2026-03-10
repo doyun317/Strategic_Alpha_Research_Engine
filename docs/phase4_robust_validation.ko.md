@@ -1,5 +1,9 @@
 # Strategic Alpha Research Engine Phase 4 구현 범위
 
+현재 이 문서는 Phase 4 구현 이력을 설명하는 기록 문서다.
+현재 운영 경로에서는 validation 단계가 `autopilot` 내부 subrun으로 사용되며,
+아래 내용은 그 validation layer가 어떤 목표로 도입되었는지 정리한다.
+
 ## 1. 문서 목적
 
 이 문서는 Phase 3 다음 단계로 구현할 `robust validation` 범위를 고정하기 위한 문서다.
@@ -7,8 +11,7 @@
 이번 단계의 핵심 목표는 다음이다.
 
 - Stage A 탐색 통과 후보를 별도의 validation 흐름으로 관리하기
-- `validate -> validation record -> robust candidate promotion`
-  흐름을 코드상에서 연결하기
+- validation record와 robust candidate promotion 흐름을 코드상에서 연결하기
 - 단일 기간 성과가 아니라 다중 기간과 checks/grade를 포함한
   강건성 평가를 기본 경로로 만들기
 
@@ -17,7 +20,7 @@
 이번 단계는 아래를 달성해야 한다.
 
 1. `ValidationRecord` 도메인 모델 추가
-2. `validate` 실행 모드 추가
+2. validation entrypoint 추가
 3. Stage B 다중 기간 validation runner 구현
 4. Stage C checks / grade 기반 상세 판정 연결
 5. `sim_passed -> robust_candidate` 승격 규칙 구현
@@ -57,10 +60,10 @@
 - family 내 과도한 중복 차단의 최소 규칙
 - validation 결과와 promotion decision의 명시적 연결
 
-### 3.5 CLI / status
+### 3.5 runtime / status
 
 포함:
-- `validate` CLI
+- validation stage entrypoint
 - validation 결과 요약
 - backlog 상태 표시
 - robust candidate count 표시
@@ -71,7 +74,7 @@
 - validation record schema 테스트
 - multi-period aggregation 테스트
 - checks / grade-aware promotion 테스트
-- validate CLI smoke test
+- validation stage smoke test
 
 ## 4. 이번 단계 out-of-scope
 
@@ -121,7 +124,7 @@ Sharpe 같은 숫자뿐 아니라 checks/grade도 승격 판단에 포함해야 
 이번 단계 완료 시점에 있어야 하는 것:
 
 1. `ValidationRecord` 모델과 artifact 저장 구조
-2. `validate` workflow / CLI
+2. validation workflow
 3. multi-period validation runner
 4. robust candidate promotion 규칙
 5. validation backlog / matrix status summary

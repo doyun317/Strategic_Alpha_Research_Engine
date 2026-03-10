@@ -1,5 +1,9 @@
 # Strategic Alpha Research Engine Phase 5 구현 범위
 
+현재 이 문서는 Phase 5 구현 이력을 설명하는 기록 문서다.
+현재 운영 경로에서는 submission prep 단계가 `autopilot` 내부 subrun과 synthetic review로 사용되며,
+아래 내용은 그 레이어가 어떤 목표로 만들어졌는지 정리한다.
+
 ## 1. 문서 목적
 
 이 문서는 Phase 4 다음 단계로 구현할 `submission prep layer` 범위를 고정하기 위한 문서다.
@@ -7,8 +11,7 @@
 이번 단계의 핵심 목표는 다음이다.
 
 - robust candidate를 사람이 검토하고 제출 준비 상태로 승격하는 흐름을 만들기
-- `promote -> human review -> submission packet generation`
-  경로를 코드상에서 명시적으로 남기기
+- robust candidate 이후 human review / packet generation 경로를 코드상에서 명시적으로 남기기
 - 제출 직전 후보의 lineage, validation 근거, review 결정이
   하나의 패킷으로 재구성 가능하게 만들기
 
@@ -19,7 +22,7 @@
 1. submission-ready 상태 기록 구조 추가
 2. human review queue와 review decision 기록 추가
 3. submission packet artifact 생성 기능 추가
-4. `promote` 실행 모드의 최종 버전 구현
+4. submission-ready 승격 단계의 최종 버전 구현
 5. submission 후보의 lineage / validation summary / review summary를 하나로 묶기
 6. pytest 기준 단위 테스트와 packet smoke test 추가
 
@@ -49,10 +52,10 @@
 - human review 결과
 - 최종 제출용 JSON packet 또는 동등한 artifact
 
-### 3.4 Promote / report workflow
+### 3.4 submission-ready / report workflow
 
 포함:
-- `promote` CLI의 submission-ready 업데이트
+- submission-ready 업데이트
 - review queue를 반영한 최종 상태 갱신
 - status에서 submission-ready pool 확인
 
@@ -69,7 +72,7 @@
 - review queue 상태 전이 테스트
 - submission-ready 승격 테스트
 - packet generation schema 테스트
-- promote / packet smoke test
+- submission-ready / packet smoke test
 
 ## 4. 이번 단계 out-of-scope
 
@@ -95,13 +98,13 @@
 - `5-3 submission packet generation`: 완료
 - 현재까지 구현된 내용:
   - `robust_candidate -> submission_ready` 승격 workflow
-  - `promote` CLI
+  - submission-ready 승격 stage
   - `submission_ready.jsonl` artifact와 `submission_ready_candidates.jsonl` state ledger
   - `status`의 `submission_ready_inventory` 요약
-  - promote 시점의 pending `human_review_queue`
-  - `review` CLI와 `human_review_decisions.jsonl`
+  - submission-ready 시점의 pending `human_review_queue`
+  - review decision artifact와 `human_review_decisions.jsonl`
   - `status`의 `human_review_queue`, `human_review_summary` 요약
-  - `packet` CLI와 `submission_packets.jsonl`
+  - packet artifact와 `submission_packets.jsonl`
   - candidate별 `packets/<candidate_id>.json`
   - `status`의 `submission_packet_summary`
   - review / packet runbook 문서
@@ -135,7 +138,7 @@ queue entry, review decision, submission packet이 서로 링크되지만
 1. submission-ready ledger
 2. human review queue / decision 구조
 3. submission packet generator
-4. `promote` CLI의 최종 버전
+4. submission-ready 승격 stage의 최종 버전
 5. review / packet runbook
 6. pytest 통과
 

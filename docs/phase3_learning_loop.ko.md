@@ -1,5 +1,9 @@
 # Strategic Alpha Research Engine Phase 3 구현 범위
 
+현재 이 문서는 Phase 3 구현 이력을 설명하는 기록 문서다.
+현재 운영 경로는 `autopilot` 하나이며,
+아래 내용은 이후 `autopilot` agenda generation과 family weighting으로 흡수된 단계적 구현 범위를 정리한다.
+
 ## 1. 문서 목적
 
 이 문서는 Phase 2 다음 단계로 구현할 `learning loop` 범위를 고정하기 위한 문서다.
@@ -7,7 +11,7 @@
 이번 단계의 핵심 목표는 다음이다.
 
 - 단순 run 기록을 넘어서, family 수준에서 무엇이 먹히는지 학습하기
-- `family stats -> search policy learner -> agenda prioritization -> research-loop`
+- `family stats -> learner-ready summary -> agenda prioritization`
   흐름을 코드상에서 연결하기
 - 이후 robust validation과 submission prep이 붙기 전에
   "어떤 방향을 더 탐색할지"를 시스템이 설명 가능하게 만들기
@@ -20,7 +24,7 @@
 2. learner 입력용 summary 규격 추가
 3. heuristic search policy learner 구현
 4. `ResearchAgendaManager` 또는 동등한 agenda prioritization 컴포넌트 추가
-5. `research-loop` 실행 모드 기초 구현
+5. bounded iterative runner 기초 구현
 6. `status`에서 family-level 성과와 queue 상태를 더 잘 보이게 만들기
 7. pytest 기준 단위 테스트와 샘플 loop 테스트 추가
 
@@ -53,11 +57,11 @@
 - 운영자 수동 directive와 learner 점수의 병합 규칙
 - "다음에 무엇을 탐색할지"를 설명 가능한 형태로 반환
 
-### 3.4 `research-loop` 실행 모드
+### 3.4 bounded iterative runner
 
 포함:
-- bounded iteration 형태의 최소 `research-loop`
-- `plan -> synthesize -> simulate -> evaluate -> update stats`
+- bounded iteration 형태의 최소 exploratory runner
+- `agenda selection -> synthesis -> simulation -> evaluation -> update stats`
   흐름 연결
 - loop 1회 또는 N회 실행
 - 각 iteration의 run state와 status summary 갱신
@@ -76,7 +80,7 @@
 - family aggregation 단위 테스트
 - learner scoring 테스트
 - agenda prioritization 테스트
-- `research-loop` smoke test
+- bounded runner smoke test
 
 ## 4. 이번 단계 out-of-scope
 
@@ -131,7 +135,7 @@ Phase 3에서는 "왜 이 family를 더 탐색하는지"를 사람이 읽을 수
 1. family stats 확장 모델 또는 summary 구조
 2. heuristic learner 구현
 3. agenda prioritization 컴포넌트
-4. `research-loop` CLI 또는 동등한 진입점
+4. bounded iterative runner 또는 동등한 진입점
 5. status summary 확장
 6. pytest 통과
 
@@ -141,7 +145,7 @@ Phase 3에서는 "왜 이 family를 더 탐색하는지"를 사람이 읽을 수
 
 1. family 성과를 바탕으로 agenda priority를 재조정할 수 있다.
 2. learner가 다음 탐색 대상을 설명 가능한 이유와 함께 반환한다.
-3. bounded `research-loop`를 실행할 수 있다.
+3. bounded iterative runner를 실행할 수 있다.
 4. `status`에서 family별 성과 요약과 loop 상태를 볼 수 있다.
 5. 이후 Phase 4 validation 단계가 family-level signal을 그대로 재사용할 수 있다.
 
