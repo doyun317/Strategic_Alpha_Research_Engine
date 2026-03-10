@@ -37,6 +37,7 @@ class OpenAICompatibleStructuredLLMClient:
         schema_retries = 0
         empty_retries = 0
         last_error: Exception | None = None
+        response_format_type = "json_schema"
 
         while True:
             response = self._session.post(
@@ -44,11 +45,17 @@ class OpenAICompatibleStructuredLLMClient:
                 json=self._build_request_payload(
                     asset=asset,
                     input_payload=input_payload,
+                    output_model=output_model,
                     retry_error=last_error,
+                    response_format_type=response_format_type,
                 ),
                 timeout=self.settings.timeout_seconds,
             )
             if response.status_code >= 400:
+                if response.status_code == 400 and response_format_type == "json_schema":
+                    response_format_type = "json_object"
+                    last_error = RuntimeError("provider_rejected_json_schema_response_format")
+                    continue
                 raise RuntimeError(
                     f"Structured LLM request failed with status {response.status_code}: {response.text[:240]}"
                 )
@@ -76,7 +83,9 @@ class OpenAICompatibleStructuredLLMClient:
         *,
         asset: PromptAsset,
         input_payload: dict,
+        output_model: type,
         retry_error: Exception | None,
+        response_format_type: str,
     ) -> dict[str, Any]:
         retry_note = (
             f"\nPrevious attempt failed: {type(retry_error).__name__}: {retry_error}"
@@ -100,7 +109,10 @@ class OpenAICompatibleStructuredLLMClient:
         return {
             "model": self.settings.model,
             "temperature": asset.temperature,
-            "response_format": {"type": "json_object"},
+            "response_format": self._build_response_format(
+                output_model=output_model,
+                response_format_type=response_format_type,
+            ),
             "messages": [
                 {
                     "role": "system",
@@ -112,6 +124,19 @@ class OpenAICompatibleStructuredLLMClient:
                 },
             ],
         }
+
+    @staticmethod
+    def _build_response_format(*, output_model: type, response_format_type: str) -> dict[str, Any]:
+        if response_format_type == "json_schema":
+            return {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": output_model.__name__,
+                    "strict": True,
+                    "schema": output_model.model_json_schema(),
+                },
+            }
+        return {"type": "json_object"}
 
     def _build_url(self, path_or_url: str) -> str:
         if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
