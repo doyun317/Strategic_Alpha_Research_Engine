@@ -334,7 +334,7 @@ def test_autopilot_command_runs_full_fake_pipeline(tmp_path, capsys, monkeypatch
             )
 
     monkeypatch.setattr(
-        "strategic_alpha_engine.interfaces.cli.main._build_structured_llm_client",
+        "strategic_alpha_engine.interfaces.cli.autopilot_runtime.build_structured_llm_client",
         lambda settings: StubStructuredLLMClient(),
     )
 
