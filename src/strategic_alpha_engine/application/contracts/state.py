@@ -50,6 +50,7 @@ class RunStateRecord(EngineModel):
     run_kind: RunKind
     status: RunLifecycleStatus
     started_at: datetime
+    parent_run_id: str | None = Field(default=None, pattern=IDENTIFIER_PATTERN)
     completed_at: datetime | None = None
     error_message: str | None = Field(default=None, max_length=300)
     candidate_count: int | None = Field(default=None, ge=0)

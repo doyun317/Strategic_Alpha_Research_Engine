@@ -178,6 +178,15 @@ class RunKind(str, Enum):
     PACKET = "packet"
     STATUS = "status"
     RESEARCH_LOOP = "research_loop"
+    AUTOPILOT = "autopilot"
+
+
+class AutopilotStopReason(str, Enum):
+    TARGET_PACKET_COUNT_REACHED = "target_packet_count_reached"
+    IDLE_ROUND_LIMIT_REACHED = "idle_round_limit_reached"
+    MAX_AGENDAS_REACHED = "max_agendas_reached"
+    MAX_SIMULATIONS_REACHED = "max_simulations_reached"
+    AGENDA_GENERATION_EXHAUSTED = "agenda_generation_exhausted"
 
 
 class RunLifecycleStatus(str, Enum):

@@ -126,6 +126,7 @@ git checkout -b phase2/2-3-static-validator
 | 5-1 | `phase5/5-1-submission-ready-ledger` | 10.8, Phase 5 | submission-ready 상태 기록 구조 추가 | submission-ready 후보 ledger 생성 확인 | `completed` |
 | 5-2 | `phase5/5-2-human-review-queue` | 11.10, Phase 5 | human review queue와 review decision 기록 추가 | review queue entry 생성/해제 테스트 통과 | `completed` |
 | 5-3 | `phase5/5-3-submission-packet-generation` | Phase 5 | 제출용 패킷 생성 | candidate lineage + validation summary packet 생성 가능 | `completed` |
+| 6-1 | `phase6/6-1-autopilot-alpha-factory` | Phase 6 | autopilot settings, structured LLM, hybrid agenda generator, autopilot workflow, manifest/index/status 통합 | `autopilot` CLI, manifest/index, fake-provider integration test 통과 | `completed` |
 
 ## 7. 각 단계의 역할 경계
 
@@ -223,3 +224,34 @@ git checkout -b phase2/2-3-static-validator
 - `status`에서 `human_review_queue`와 `human_review_summary`가 조회 가능함
 - `packet` CLI가 approved 후보를 self-contained artifact로 저장함
 - `status`에서 `submission_packet_summary`가 조회 가능함
+
+## 12. Phase 6 Autopilot 확장
+
+Phase 5까지는 운영자가 `simulate -> validate -> promote -> review -> packet`를 수동으로 이어 붙여야 했다.
+
+Phase 6에서는 이 한계를 없애고, 아래 경로를 `autopilot` 실행으로 통합했다.
+
+- agenda 자동 생성
+- LLM-backed `plan` / `synthesize` / `critic`
+- Brain simulation
+- Stage B validation
+- robust candidate 선별
+- synthetic auto-review
+- packet 생성
+- latest submission manifest 저장
+
+핵심 추가 산출물:
+
+- `runs/<autopilot_run_id>/agenda_catalog.jsonl`
+- `runs/<autopilot_run_id>/autopilot_iterations.jsonl`
+- `runs/<autopilot_run_id>/autopilot_manifest.json`
+- `runs/<autopilot_run_id>/auto_review.jsonl`
+- `state/submission_packet_index.jsonl`
+- `state/latest_submission_manifest.json`
+
+Phase 6 이후 운영 기본 경로는 아래 둘로 나뉜다.
+
+1. 수동 제어가 필요할 때:
+   - 기존 `simulate`, `validate`, `promote`, `review`, `packet`
+2. 대량 자동 생성과 packet 적재가 목적일 때:
+   - `autopilot`

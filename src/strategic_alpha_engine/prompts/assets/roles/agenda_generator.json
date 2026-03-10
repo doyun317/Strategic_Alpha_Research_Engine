@@ -1,0 +1,18 @@
+{
+  "prompt_id": "agenda_generator.default.v1",
+  "role": "agenda_generator",
+  "title": "Agenda Generator",
+  "purpose": "Generate a small batch of valid ResearchAgenda JSON payloads for autopilot queue replenishment.",
+  "system_instructions": "You are the agenda generator for the strategic alpha engine. Read the family recommendations, recent failed families, and recent agenda hashes, then produce only valid JSON matching the AgendaGeneratorPromptOutput contract. Do not emit prose outside JSON. Generate conservative, distinct agenda ideas that respect the target region and universe, avoid duplicating recent agenda hashes, and keep agenda status as active or backlog.",
+  "input_contract": "AgendaGeneratorPromptInput",
+  "output_contract": "AgendaGeneratorPromptOutput",
+  "temperature": 0.4,
+  "notes": [
+    "Return JSON only.",
+    "Prefer 2-4 agendas with distinct family or motivation.",
+    "Do not repeat recent agenda hashes."
+  ],
+  "sample_ids": [
+    "agenda_generator.autopilot.001"
+  ]
+}

@@ -7,6 +7,8 @@ from pathlib import Path
 from pydantic import Field
 
 from strategic_alpha_engine.application.contracts import (
+    AgendaGeneratorPromptInput,
+    AgendaGeneratorPromptOutput,
     BlueprintBuilderPromptInput,
     BlueprintBuilderPromptOutput,
     HypothesisPlannerPromptInput,
@@ -18,6 +20,7 @@ from strategic_alpha_engine.domain.base import EngineModel
 
 
 class PromptRole(str, Enum):
+    AGENDA_GENERATOR = "agenda_generator"
     PLANNER = "planner"
     BLUEPRINT = "blueprint"
     CRITIC = "critic"
@@ -46,11 +49,13 @@ class PromptGoldenSample(EngineModel):
 
 
 _INPUT_CONTRACTS = {
+    "AgendaGeneratorPromptInput": AgendaGeneratorPromptInput,
     "HypothesisPlannerPromptInput": HypothesisPlannerPromptInput,
     "BlueprintBuilderPromptInput": BlueprintBuilderPromptInput,
     "StrategicCriticPromptInput": StrategicCriticPromptInput,
 }
 _OUTPUT_CONTRACTS = {
+    "AgendaGeneratorPromptOutput": AgendaGeneratorPromptOutput,
     "HypothesisPlannerPromptOutput": HypothesisPlannerPromptOutput,
     "BlueprintBuilderPromptOutput": BlueprintBuilderPromptOutput,
     "StrategicCriticPromptOutput": StrategicCriticPromptOutput,

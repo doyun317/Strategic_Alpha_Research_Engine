@@ -7,8 +7,20 @@ from strategic_alpha_engine.domain.examples import (
     build_sample_research_agenda,
     build_sample_signal_blueprint,
 )
+from strategic_alpha_engine.application.services import (
+    RuleBasedStrategicCritic,
+    StaticBlueprintBuilder,
+    StaticHypothesisPlanner,
+)
 from strategic_alpha_engine.interfaces.cli.main import main
 from strategic_alpha_engine.domain.enums import SimulationStatus
+from strategic_alpha_engine.domain import (
+    CritiqueReport,
+    ExpressionCandidate,
+    HypothesisSpec,
+    ResearchAgenda,
+    SignalBlueprint,
+)
 
 
 def test_config_command_prints_runtime_settings(tmp_path, capsys):
@@ -251,6 +263,108 @@ def test_simulate_command_persists_artifacts_and_state(tmp_path, capsys):
     assert (state_dir / "run_states.jsonl").exists()
     assert (state_dir / "family_stats.json").exists()
     assert (state_dir / "family_learner_summaries.json").exists()
+
+
+def test_autopilot_command_runs_full_fake_pipeline(tmp_path, capsys, monkeypatch):
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "default.env").write_text(
+        "\n".join(
+            [
+                "SAE_ENV=test",
+                "SAE_REGION=USA",
+                "SAE_UNIVERSE=TOP3000",
+                "SAE_DEFAULT_TEST_PERIOD=P1Y0M0D",
+                "SAE_SIMULATION_DELAY=1",
+                "SAE_SIMULATION_NEUTRALIZATION=subindustry",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (settings_dir / "llm.env").write_text(
+        "\n".join(
+            [
+                "SAE_LLM_BASE_URL=http://127.0.0.1:8000/v1",
+                "SAE_LLM_MODEL=test-model",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    agenda_path = tmp_path / "agenda.json"
+    agenda_path.write_text(
+        json.dumps(build_sample_research_agenda().model_dump(mode="json")),
+        encoding="utf-8",
+    )
+    artifacts_dir = tmp_path / "artifacts"
+
+    class StubStructuredLLMClient:
+        def __init__(self):
+            self.hypothesis_planner = StaticHypothesisPlanner()
+            self.blueprint_builder = StaticBlueprintBuilder()
+            self.critic = RuleBasedStrategicCritic()
+
+        def generate_structured(self, *, asset, input_payload, output_model):
+            if asset.role == "agenda_generator":
+                return output_model(agendas=[], generator_notes=["stub_agenda_generator"])
+            if asset.role == "planner":
+                agenda = ResearchAgenda(**input_payload["agenda"])
+                return output_model(
+                    hypothesis=self.hypothesis_planner.plan(agenda),
+                    planner_notes=["stubbed_planner"],
+                )
+            if asset.role == "blueprint":
+                hypothesis = HypothesisSpec(**input_payload["hypothesis"])
+                return output_model(
+                    blueprint=self.blueprint_builder.build(hypothesis),
+                    design_notes=["stubbed_blueprint"],
+                )
+            hypothesis = HypothesisSpec(**input_payload["hypothesis"])
+            blueprint = SignalBlueprint(**input_payload["blueprint"])
+            candidate = ExpressionCandidate(
+                **{
+                    key: value
+                    for key, value in input_payload["candidate"].items()
+                    if key in ExpressionCandidate.model_fields
+                }
+            )
+            return output_model(
+                critique=self.critic.critique(hypothesis, blueprint, candidate)
+            )
+
+    monkeypatch.setattr(
+        "strategic_alpha_engine.interfaces.cli.main._build_structured_llm_client",
+        lambda settings: StubStructuredLLMClient(),
+    )
+
+    exit_code = main(
+        [
+            "autopilot",
+            "--settings-dir",
+            str(settings_dir),
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--agenda-catalog-in",
+            str(agenda_path),
+            "--brain-provider",
+            "fake",
+            "--target-packet-count",
+            "1",
+            "--packet-top-k",
+            "1",
+            "--max-agendas",
+            "1",
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["latest_submission_manifest"]["selected_packet_count"] == 1
+    assert len(payload["packet_ids"]) == 1
+    assert (artifacts_dir / "state" / "latest_submission_manifest.json").exists()
+    assert (artifacts_dir / "state" / "submission_packet_index.jsonl").exists()
 
 
 def test_simulate_command_accepts_worldquant_provider_with_stubbed_client(tmp_path, capsys, monkeypatch):

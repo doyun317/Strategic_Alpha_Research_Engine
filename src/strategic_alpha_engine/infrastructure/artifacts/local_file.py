@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 from strategic_alpha_engine.application.contracts import (
+    AutopilotIterationRecord,
+    AutopilotManifest,
     CandidateArtifactRecord,
     EvaluationArtifactRecord,
     HumanReviewArtifactRecord,
@@ -192,6 +194,60 @@ class LocalFileArtifactLedger:
                 packets_dir / f"{record.candidate_artifact.candidate.candidate_id}.json",
                 record.model_dump(mode="json"),
             )
+        return run_dir
+
+    def write_agenda_catalog_records(
+        self,
+        run_id: str,
+        records: list[ResearchAgenda],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "agenda_catalog.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
+    def write_agenda_generation_summary(
+        self,
+        run_id: str,
+        payload: dict,
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_json(run_dir / "agenda_generation_summary.json", payload)
+        return run_dir
+
+    def write_autopilot_iterations(
+        self,
+        run_id: str,
+        records: list[AutopilotIterationRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "autopilot_iterations.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
+        return run_dir
+
+    def write_autopilot_manifest(
+        self,
+        run_id: str,
+        manifest: AutopilotManifest,
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_json(run_dir / "autopilot_manifest.json", manifest.model_dump(mode="json"))
+        return run_dir
+
+    def write_auto_review_records(
+        self,
+        run_id: str,
+        records: list[HumanReviewArtifactRecord],
+    ) -> Path:
+        run_dir = self.run_directory(run_id)
+        self._write_jsonl(
+            run_dir / "auto_review.jsonl",
+            [record.model_dump(mode="json") for record in records],
+        )
         return run_dir
 
     def write_review_queue_records(

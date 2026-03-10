@@ -8,6 +8,7 @@ from pathlib import Path
 
 from strategic_alpha_engine.application.contracts import (
     AgendaQueueRecord,
+    AutopilotManifest,
     CandidateArtifactRecord,
     CandidateStageRecord,
     EvaluationArtifactRecord,
@@ -17,12 +18,18 @@ from strategic_alpha_engine.application.contracts import (
     PromotionArtifactRecord,
     RunStateRecord,
     SimulationArtifactRecord,
+    SubmissionPacketIndexRecord,
     SubmissionReadyArtifactRecord,
     SubmissionReadyCandidateRecord,
     ValidationPromotionArtifactRecord,
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.application.services import (
+    HybridAgendaGenerator,
+    LLMAgendaAugmentor,
+    LLMBlueprintBuilder,
+    LLMHypothesisPlanner,
+    LLMStrategicCritic,
     FamilyWeightedAgendaPrioritizer,
     FamilyAnalyticsBundle,
     HeuristicResearchAgendaManager,
@@ -37,9 +44,11 @@ from strategic_alpha_engine.application.services import (
     SkeletonCandidateSynthesizer,
     StaticBlueprintBuilder,
     StaticHypothesisPlanner,
+    TemplateAgendaGenerator,
     candidate_signature,
 )
 from strategic_alpha_engine.application.workflows import (
+    AutopilotWorkflow,
     HumanReviewWorkflow,
     MultiPeriodValidateWorkflow,
     PlanWorkflow,
@@ -73,6 +82,7 @@ from strategic_alpha_engine.domain import (
     build_sample_validation_record,
 )
 from strategic_alpha_engine.domain.enums import (
+    AutopilotStopReason,
     CandidateLifecycleStage,
     FieldClass,
     HumanReviewDecisionKind,
@@ -90,9 +100,10 @@ from strategic_alpha_engine.infrastructure.brain import (
     FakeBrainSimulationClient,
     WorldQuantBrainSimulationClient,
 )
+from strategic_alpha_engine.infrastructure.llm import OpenAICompatibleStructuredLLMClient
 from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
 from strategic_alpha_engine.infrastructure.state import LocalFileStateLedger
-from strategic_alpha_engine.prompts import load_prompt_asset, load_prompt_golden_sample
+from strategic_alpha_engine.prompts import PromptRole, load_prompt_asset, load_prompt_golden_sample
 
 
 def _write_output(payload: dict | list, output_path: str | None) -> None:
@@ -241,6 +252,47 @@ def _build_human_review_workflow() -> HumanReviewWorkflow:
 
 def _build_submission_packet_workflow() -> SubmissionPacketWorkflow:
     return SubmissionPacketWorkflow()
+
+
+def _build_structured_llm_client(settings: RuntimeSettings) -> OpenAICompatibleStructuredLLMClient:
+    if settings.llm is None:
+        raise ValueError("LLM settings are required for autopilot execution")
+    return OpenAICompatibleStructuredLLMClient(settings.llm)
+
+
+def _build_autopilot_plan_workflow(settings: RuntimeSettings) -> PlanWorkflow:
+    llm_client = _build_structured_llm_client(settings)
+    return PlanWorkflow(
+        hypothesis_planner=LLMHypothesisPlanner(llm_client),
+        blueprint_builder=LLMBlueprintBuilder(llm_client),
+    )
+
+
+def _build_autopilot_synthesize_workflow(settings: RuntimeSettings) -> SynthesizeWorkflow:
+    llm_client = _build_structured_llm_client(settings)
+    return SynthesizeWorkflow(
+        candidate_synthesizer=SkeletonCandidateSynthesizer(),
+        static_validator=_build_static_validator(),
+        strategic_critic=LLMStrategicCritic(llm_client),
+    )
+
+
+def _load_agenda_catalog(path: str | None) -> list[ResearchAgenda]:
+    if not path:
+        return []
+
+    catalog_path = Path(path)
+    if catalog_path.suffix == ".jsonl":
+        return [ResearchAgenda(**payload) for payload in _read_jsonl_file(catalog_path)]
+
+    payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        return [ResearchAgenda(**item) for item in payload]
+    if isinstance(payload, dict) and "agendas" in payload and isinstance(payload["agendas"], list):
+        return [ResearchAgenda(**item) for item in payload["agendas"]]
+    if isinstance(payload, dict):
+        return [ResearchAgenda(**payload)]
+    raise ValueError("agenda catalog input must be a JSON object, JSON array, or JSONL file")
 
 
 def _load_synthesize_inputs(
@@ -1404,6 +1456,98 @@ def _build_submission_packet_summary(packet_payloads: list[dict]) -> dict:
     }
 
 
+def _submission_packet_index_rank_key(record: SubmissionPacketIndexRecord) -> tuple:
+    return (
+        -record.passing_period_count,
+        -(record.stage_a_sharpe if record.stage_a_sharpe is not None else float("-inf")),
+        -(record.fitness if record.fitness is not None else float("-inf")),
+        abs((record.turnover if record.turnover is not None else 0.25) - 0.25)
+        if record.turnover is not None
+        else float("inf"),
+        record.candidate_id,
+    )
+
+
+def _build_submission_packet_index_summary(
+    records: list[SubmissionPacketIndexRecord],
+) -> dict:
+    if not records:
+        return {
+            "total_records": 0,
+            "unique_signatures": 0,
+            "latest_autopilot_run_id": None,
+            "candidate_ids": [],
+            "packet_ids": [],
+            "entries": [],
+        }
+
+    best_by_signature: dict[str, SubmissionPacketIndexRecord] = {}
+    for record in records:
+        current = best_by_signature.get(record.signature)
+        if current is None or _submission_packet_index_rank_key(record) < _submission_packet_index_rank_key(current):
+            best_by_signature[record.signature] = record
+
+    latest_record = max(records, key=lambda record: record.recorded_at)
+    selected_records = sorted(best_by_signature.values(), key=_submission_packet_index_rank_key)
+    return {
+        "total_records": len(records),
+        "unique_signatures": len(best_by_signature),
+        "latest_autopilot_run_id": latest_record.autopilot_run_id,
+        "candidate_ids": [record.candidate_id for record in selected_records],
+        "packet_ids": [record.packet_id for record in selected_records],
+        "entries": [
+            record.model_dump(mode="json")
+            for record in selected_records[:10]
+        ],
+    }
+
+
+def _build_autopilot_status_summary(
+    run_state_records: list[RunStateRecord],
+    latest_manifest: AutopilotManifest | None,
+    artifacts_root: Path,
+) -> dict:
+    latest_run_records = list(_latest_run_state_records(run_state_records).values())
+    latest_run_records.sort(
+        key=lambda record: record.completed_at or record.started_at,
+        reverse=True,
+    )
+    autopilot_records = [
+        record
+        for record in latest_run_records
+        if record.run_kind == RunKind.AUTOPILOT
+    ]
+    if not autopilot_records:
+        return {
+            "current_state": "not_started",
+            "latest_run_id": None,
+            "stop_reason": None,
+            "ready_for_submission_packet_count": 0,
+            "latest_submission_manifest_path": None,
+        }
+
+    latest_record = autopilot_records[0]
+    if latest_record.status == RunLifecycleStatus.STARTED:
+        current_state = "running"
+    elif latest_record.status == RunLifecycleStatus.FAILED:
+        current_state = "failed"
+    else:
+        current_state = "idle"
+
+    manifest_path = artifacts_root / "state" / "latest_submission_manifest.json"
+    return {
+        "current_state": current_state,
+        "latest_run_id": latest_record.run_id,
+        "stop_reason": latest_manifest.stopped_reason if latest_manifest is not None else None,
+        "ready_for_submission_packet_count": (
+            latest_manifest.selected_packet_count
+            if latest_manifest is not None
+            else 0
+        ),
+        "latest_submission_manifest_path": str(manifest_path) if manifest_path.exists() else None,
+    }
+
+
 def _latest_submission_ready_records(
     records: list[SubmissionReadyCandidateRecord],
 ) -> list[SubmissionReadyCandidateRecord]:
@@ -1744,6 +1888,8 @@ def _build_status_summary(root_dir: str | Path) -> dict:
     submission_ready_records = state_ledger.load_submission_ready_records()
     human_review_queue_records = state_ledger.load_human_review_queue_records()
     human_review_decisions = state_ledger.load_human_review_decisions()
+    submission_packet_index_records = state_ledger.load_submission_packet_index_records()
+    latest_submission_manifest = state_ledger.load_latest_submission_manifest()
     latest_validation_backlog_entries = _latest_validation_backlog_entries(validation_backlog_entries)
     validation_records = _load_validation_records(artifacts_root, run_state_records)
     robust_promotion_records = _load_robust_promotion_records(artifacts_root, run_state_records)
@@ -1845,6 +1991,11 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         "generated_at": _utc_now().isoformat(),
         "artifacts_root": str(artifacts_root),
         "loop_status": loop_status,
+        "autopilot_status": _build_autopilot_status_summary(
+            run_state_records,
+            latest_submission_manifest,
+            artifacts_root,
+        ),
         "agenda_status": agenda_status,
         "family_stats": [snapshot.model_dump(mode="json") for snapshot in family_stats],
         "family_learner_summaries": [
@@ -1869,6 +2020,14 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         "human_review_queue": _build_human_review_queue_summary(human_review_queue_records),
         "human_review_summary": _build_human_review_summary(human_review_decisions),
         "submission_packet_summary": _build_submission_packet_summary(submission_packet_payloads),
+        "submission_packet_index": _build_submission_packet_index_summary(
+            submission_packet_index_records
+        ),
+        "latest_submission_manifest": (
+            latest_submission_manifest.model_dump(mode="json")
+            if latest_submission_manifest is not None
+            else None
+        ),
         "agenda_queue": _build_agenda_queue_summary(agenda_queue_records),
         "candidate_stage_counts": _build_stage_counts(candidate_stage_records),
         "recent_candidate_flow_24h": {
@@ -1884,6 +2043,52 @@ def _build_status_summary(root_dir: str | Path) -> dict:
             "recent_run_ids": [record.run_id for record in latest_run_records[:5]],
         },
     }
+
+
+def _build_autopilot_workflow(
+    *,
+    settings: RuntimeSettings,
+    artifacts_dir: str,
+    brain_provider: str,
+    fake_terminal_status: str,
+    max_polls: int | None,
+) -> AutopilotWorkflow:
+    llm_client = _build_structured_llm_client(settings)
+    return AutopilotWorkflow(
+        settings=settings,
+        agenda_generator=HybridAgendaGenerator(
+            TemplateAgendaGenerator(
+                regions=[settings.region],
+                universes=[settings.universe],
+            ),
+            LLMAgendaAugmentor(
+                llm_client,
+                target_region=settings.region,
+                target_universe=settings.universe,
+            ),
+            min_queue_depth=settings.autopilot.min_queue_depth,
+        ),
+        agenda_manager=HeuristicResearchAgendaManager(
+            agenda_prioritizer=FamilyWeightedAgendaPrioritizer(),
+        ),
+        plan_workflow=_build_autopilot_plan_workflow(settings),
+        synthesize_workflow=_build_autopilot_synthesize_workflow(settings),
+        brain_client=_build_brain_client(
+            settings=settings,
+            brain_provider=brain_provider,
+            fake_terminal_status=fake_terminal_status,
+            started_at=_utc_now(),
+        ),
+        stage_a_workflow=_build_stage_a_workflow(),
+        validate_workflow=_build_multi_period_validate_workflow(base_time=_utc_now()),
+        robust_promotion_workflow=_build_robust_promotion_workflow(),
+        human_review_workflow=_build_human_review_workflow(),
+        submission_packet_workflow=_build_submission_packet_workflow(),
+        artifact_ledger=LocalFileArtifactLedger(artifacts_dir),
+        state_ledger=LocalFileStateLedger(artifacts_dir),
+        family_analytics_builder=LocalArtifactFamilyAnalyticsBuilder(),
+        max_polls=max_polls or (settings.brain.max_polls if settings.brain else 3),
+    )
 
 
 def _execute_local_research_run(
@@ -2120,6 +2325,36 @@ def build_parser() -> argparse.ArgumentParser:
     research_loop_parser.add_argument("--max-polls", type=int, default=None)
     research_loop_parser.add_argument("--out", default=None)
 
+    autopilot_parser = subparsers.add_parser(
+        "autopilot",
+        help="Run the full autopilot alpha factory and emit a submission manifest",
+    )
+    autopilot_parser.add_argument("--settings-dir", default=None)
+    autopilot_parser.add_argument("--artifacts-dir", default="artifacts")
+    autopilot_parser.add_argument("--agenda-catalog-in", default=None)
+    autopilot_parser.add_argument("--run-id", default=None)
+    autopilot_parser.add_argument(
+        "--brain-provider",
+        choices=["fake", "worldquant"],
+        default="worldquant",
+    )
+    autopilot_parser.add_argument(
+        "--fake-terminal-status",
+        choices=[
+            SimulationStatus.SUCCEEDED.value,
+            SimulationStatus.FAILED.value,
+            SimulationStatus.TIMED_OUT.value,
+        ],
+        default=SimulationStatus.SUCCEEDED.value,
+    )
+    autopilot_parser.add_argument("--target-packet-count", type=int, default=None)
+    autopilot_parser.add_argument("--packet-top-k", type=int, default=None)
+    autopilot_parser.add_argument("--max-agendas", type=int, default=None)
+    autopilot_parser.add_argument("--max-simulations", type=int, default=None)
+    autopilot_parser.add_argument("--idle-rounds", type=int, default=None)
+    autopilot_parser.add_argument("--max-polls", type=int, default=None)
+    autopilot_parser.add_argument("--out", default=None)
+
     validate_parser = subparsers.add_parser(
         "validate",
         help="Run a rule-based validation pass for sim_passed candidates from a prior run",
@@ -2199,7 +2434,16 @@ def build_parser() -> argparse.ArgumentParser:
     catalog_parser.add_argument("--out", default=None)
 
     prompt_parser = subparsers.add_parser("prompt", help="Inspect prompt assets and golden samples")
-    prompt_parser.add_argument("--role", choices=["planner", "blueprint", "critic"], required=True)
+    prompt_parser.add_argument(
+        "--role",
+        choices=[
+            PromptRole.AGENDA_GENERATOR.value,
+            PromptRole.PLANNER.value,
+            PromptRole.BLUEPRINT.value,
+            PromptRole.CRITIC.value,
+        ],
+        required=True,
+    )
     prompt_parser.add_argument("--sample-id", default=None)
     prompt_parser.add_argument("--out", default=None)
 
@@ -2380,6 +2624,65 @@ def main(argv: list[str] | None = None) -> int:
             "executed_agenda_ids": selected_agenda_ids,
             "state_dir": str(state_ledger.state_directory()),
             "iteration_runs": iteration_runs,
+        }
+        _write_output(payload, args.out)
+        return 0
+
+    if args.command == "autopilot":
+        try:
+            settings = load_runtime_settings(
+                settings_dir=args.settings_dir,
+                require_llm=True,
+                require_brain=args.brain_provider == "worldquant",
+            )
+            autopilot_overrides = {
+                key: value
+                for key, value in {
+                    "target_packet_count": args.target_packet_count,
+                    "packet_top_k": args.packet_top_k,
+                    "max_agendas": args.max_agendas,
+                    "max_simulations": args.max_simulations,
+                    "idle_rounds": args.idle_rounds,
+                }.items()
+                if value is not None
+            }
+            if autopilot_overrides:
+                settings = settings.model_copy(
+                    update={
+                        "autopilot": settings.autopilot.model_copy(
+                            update=autopilot_overrides,
+                        )
+                    }
+                )
+            seed_agendas = _load_agenda_catalog(args.agenda_catalog_in)
+        except ValueError as exc:
+            parser.exit(status=2, message=f"{exc}\n")
+
+        workflow = _build_autopilot_workflow(
+            settings=settings,
+            artifacts_dir=args.artifacts_dir,
+            brain_provider=args.brain_provider,
+            fake_terminal_status=args.fake_terminal_status,
+            max_polls=args.max_polls,
+        )
+        run_id = args.run_id or _build_run_id("autopilot", "factory")
+        result = workflow.run(
+            autopilot_run_id=run_id,
+            artifacts_dir=args.artifacts_dir,
+            seed_agendas=seed_agendas,
+        )
+        state_ledger = LocalFileStateLedger(args.artifacts_dir)
+        payload = {
+            "run_id": result.autopilot_run_id,
+            "stopped_reason": result.stopped_reason,
+            "agenda_catalog_count": result.agenda_catalog_count,
+            "iteration_count": len(result.iteration_records),
+            "selected_candidate_ids": result.selected_candidate_ids,
+            "packet_ids": result.packet_ids,
+            "packet_paths": result.packet_paths,
+            "packet_index_added_count": result.packet_index_added_count,
+            "latest_submission_manifest": result.manifest.model_dump(mode="json"),
+            "state_dir": str(state_ledger.state_directory()),
         }
         _write_output(payload, args.out)
         return 0
