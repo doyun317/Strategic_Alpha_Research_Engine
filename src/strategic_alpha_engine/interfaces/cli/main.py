@@ -25,11 +25,6 @@ from strategic_alpha_engine.application.contracts import (
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.application.services import (
-    HybridAgendaGenerator,
-    LLMAgendaAugmentor,
-    LLMBlueprintBuilder,
-    LLMHypothesisPlanner,
-    LLMStrategicCritic,
     FamilyWeightedAgendaPrioritizer,
     FamilyAnalyticsBundle,
     HeuristicResearchAgendaManager,
@@ -44,7 +39,6 @@ from strategic_alpha_engine.application.services import (
     SkeletonCandidateSynthesizer,
     StaticBlueprintBuilder,
     StaticHypothesisPlanner,
-    TemplateAgendaGenerator,
     candidate_signature,
 )
 from strategic_alpha_engine.application.workflows import (
@@ -100,9 +94,12 @@ from strategic_alpha_engine.infrastructure.brain import (
     FakeBrainSimulationClient,
     WorldQuantBrainSimulationClient,
 )
-from strategic_alpha_engine.infrastructure.llm import OpenAICompatibleStructuredLLMClient
 from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
 from strategic_alpha_engine.infrastructure.state import LocalFileStateLedger
+from strategic_alpha_engine.interfaces.cli.autopilot_runtime import (
+    build_autopilot_workflow,
+    load_agenda_catalog,
+)
 from strategic_alpha_engine.prompts import PromptRole, load_prompt_asset, load_prompt_golden_sample
 
 
@@ -252,47 +249,6 @@ def _build_human_review_workflow() -> HumanReviewWorkflow:
 
 def _build_submission_packet_workflow() -> SubmissionPacketWorkflow:
     return SubmissionPacketWorkflow()
-
-
-def _build_structured_llm_client(settings: RuntimeSettings) -> OpenAICompatibleStructuredLLMClient:
-    if settings.llm is None:
-        raise ValueError("LLM settings are required for autopilot execution")
-    return OpenAICompatibleStructuredLLMClient(settings.llm)
-
-
-def _build_autopilot_plan_workflow(settings: RuntimeSettings) -> PlanWorkflow:
-    llm_client = _build_structured_llm_client(settings)
-    return PlanWorkflow(
-        hypothesis_planner=LLMHypothesisPlanner(llm_client),
-        blueprint_builder=LLMBlueprintBuilder(llm_client),
-    )
-
-
-def _build_autopilot_synthesize_workflow(settings: RuntimeSettings) -> SynthesizeWorkflow:
-    llm_client = _build_structured_llm_client(settings)
-    return SynthesizeWorkflow(
-        candidate_synthesizer=SkeletonCandidateSynthesizer(),
-        static_validator=_build_static_validator(),
-        strategic_critic=LLMStrategicCritic(llm_client),
-    )
-
-
-def _load_agenda_catalog(path: str | None) -> list[ResearchAgenda]:
-    if not path:
-        return []
-
-    catalog_path = Path(path)
-    if catalog_path.suffix == ".jsonl":
-        return [ResearchAgenda(**payload) for payload in _read_jsonl_file(catalog_path)]
-
-    payload = json.loads(catalog_path.read_text(encoding="utf-8"))
-    if isinstance(payload, list):
-        return [ResearchAgenda(**item) for item in payload]
-    if isinstance(payload, dict) and "agendas" in payload and isinstance(payload["agendas"], list):
-        return [ResearchAgenda(**item) for item in payload["agendas"]]
-    if isinstance(payload, dict):
-        return [ResearchAgenda(**payload)]
-    raise ValueError("agenda catalog input must be a JSON object, JSON array, or JSONL file")
 
 
 def _load_synthesize_inputs(
@@ -2044,53 +2000,6 @@ def _build_status_summary(root_dir: str | Path) -> dict:
         },
     }
 
-
-def _build_autopilot_workflow(
-    *,
-    settings: RuntimeSettings,
-    artifacts_dir: str,
-    brain_provider: str,
-    fake_terminal_status: str,
-    max_polls: int | None,
-) -> AutopilotWorkflow:
-    llm_client = _build_structured_llm_client(settings)
-    return AutopilotWorkflow(
-        settings=settings,
-        agenda_generator=HybridAgendaGenerator(
-            TemplateAgendaGenerator(
-                regions=[settings.region],
-                universes=[settings.universe],
-            ),
-            LLMAgendaAugmentor(
-                llm_client,
-                target_region=settings.region,
-                target_universe=settings.universe,
-            ),
-            min_queue_depth=settings.autopilot.min_queue_depth,
-        ),
-        agenda_manager=HeuristicResearchAgendaManager(
-            agenda_prioritizer=FamilyWeightedAgendaPrioritizer(),
-        ),
-        plan_workflow=_build_autopilot_plan_workflow(settings),
-        synthesize_workflow=_build_autopilot_synthesize_workflow(settings),
-        brain_client=_build_brain_client(
-            settings=settings,
-            brain_provider=brain_provider,
-            fake_terminal_status=fake_terminal_status,
-            started_at=_utc_now(),
-        ),
-        stage_a_workflow=_build_stage_a_workflow(),
-        validate_workflow=_build_multi_period_validate_workflow(base_time=_utc_now()),
-        robust_promotion_workflow=_build_robust_promotion_workflow(),
-        human_review_workflow=_build_human_review_workflow(),
-        submission_packet_workflow=_build_submission_packet_workflow(),
-        artifact_ledger=LocalFileArtifactLedger(artifacts_dir),
-        state_ledger=LocalFileStateLedger(artifacts_dir),
-        family_analytics_builder=LocalArtifactFamilyAnalyticsBuilder(),
-        max_polls=max_polls or (settings.brain.max_polls if settings.brain else 3),
-    )
-
-
 def _execute_local_research_run(
     *,
     run_id: str,
@@ -2654,11 +2563,11 @@ def main(argv: list[str] | None = None) -> int:
                         )
                     }
                 )
-            seed_agendas = _load_agenda_catalog(args.agenda_catalog_in)
+            seed_agendas = load_agenda_catalog(args.agenda_catalog_in)
         except ValueError as exc:
             parser.exit(status=2, message=f"{exc}\n")
 
-        workflow = _build_autopilot_workflow(
+        workflow = build_autopilot_workflow(
             settings=settings,
             artifacts_dir=args.artifacts_dir,
             brain_provider=args.brain_provider,
