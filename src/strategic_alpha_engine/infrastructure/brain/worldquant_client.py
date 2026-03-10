@@ -36,6 +36,17 @@ _DEFAULT_WORLDQUANT_SIMULATION_SETTINGS = {
     "language": "FASTEXPR",
     "visualization": False,
 }
+_WORLDQUANT_NEUTRALIZATION_MAP = {
+    "none": "NONE",
+    "market": "MARKET",
+    "country": "COUNTRY",
+    "sector": "SECTOR",
+    "industry": "INDUSTRY",
+    "subindustry": "SUBINDUSTRY",
+    "slow": "SLOW",
+    "fast": "FAST",
+    "slow_and_fast": "SLOW_AND_FAST",
+}
 
 
 @dataclass
@@ -252,7 +263,7 @@ class WorldQuantBrainSimulationClient:
                 "region": request.region,
                 "universe": request.universe,
                 "delay": request.delay,
-                "neutralization": request.neutralization,
+                "neutralization": self._normalize_neutralization(request.neutralization),
             },
             "regular": request.expression,
         }
@@ -297,6 +308,12 @@ class WorldQuantBrainSimulationClient:
             return _ACTIVE_PROGRESS_STATUSES[raw_status]
         if raw_status in _TERMINAL_PROGRESS_STATUSES:
             return _TERMINAL_PROGRESS_STATUSES[raw_status]
+        progress = self._coerce_float(payload.get("progress"))
+        if progress is not None:
+            if progress <= 0.0:
+                return SimulationStatus.SUBMITTED
+            if progress < 1.0:
+                return SimulationStatus.RUNNING
         raise RuntimeError(f"unsupported WorldQuant Brain progress status: {raw_status or 'missing'}")
 
     def _resolve_progress_url(self, location: str | None) -> str:
@@ -348,3 +365,11 @@ class WorldQuantBrainSimulationClient:
         if sharpe >= 0.5 and fitness >= 0.3:
             return "C"
         return "D"
+
+    def _normalize_neutralization(self, value: str) -> str:
+        normalized = _WORLDQUANT_NEUTRALIZATION_MAP.get(value.strip().lower())
+        if normalized is None:
+            raise ValueError(
+                f"unsupported WorldQuant Brain neutralization value: {value}"
+            )
+        return normalized
