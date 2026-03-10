@@ -115,3 +115,42 @@ def test_partial_brain_credentials_are_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="Brain credentials are partially configured"):
         load_runtime_settings(settings_dir=tmp_path, environ={})
+
+
+def test_autopilot_settings_load_from_env_files(tmp_path):
+    (tmp_path / "default.env").write_text("SAE_ENV=development\n", encoding="utf-8")
+    (tmp_path / "llm.env").write_text(
+        "\n".join(
+            [
+                "SAE_LLM_BASE_URL=http://127.0.0.1:8000/v1",
+                "SAE_LLM_MODEL=test-model",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "local.env").write_text(
+        "\n".join(
+            [
+                "SAE_AUTOPILOT_TARGET_PACKET_COUNT=7",
+                "SAE_AUTOPILOT_PACKET_TOP_K=4",
+                "SAE_AUTOPILOT_IDLE_ROUNDS=3",
+                "SAE_AUTOPILOT_MAX_AGENDAS=25",
+                "SAE_AUTOPILOT_MAX_SIMULATIONS=40",
+                "SAE_AUTOPILOT_AUTO_APPROVE=false",
+                "SAE_AUTOPILOT_PACKET_MIN_STAGE=submission_ready",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    settings = load_runtime_settings(settings_dir=tmp_path, environ={})
+
+    assert settings.autopilot.target_packet_count == 7
+    assert settings.autopilot.packet_top_k == 4
+    assert settings.autopilot.idle_rounds == 3
+    assert settings.autopilot.max_agendas == 25
+    assert settings.autopilot.max_simulations == 40
+    assert settings.autopilot.auto_approve is False
+    assert settings.autopilot.packet_min_stage == "submission_ready"

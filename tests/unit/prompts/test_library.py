@@ -10,8 +10,8 @@ from strategic_alpha_engine.prompts import (
 def test_list_prompt_assets_loads_all_roles():
     assets = list_prompt_assets()
 
-    assert len(assets) == 3
-    assert {asset.role for asset in assets} == {"planner", "blueprint", "critic"}
+    assert len(assets) == 4
+    assert {asset.role for asset in assets} == {"agenda_generator", "planner", "blueprint", "critic"}
 
 
 def test_planner_golden_sample_validates_against_contracts():

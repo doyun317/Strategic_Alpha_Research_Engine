@@ -1,3 +1,8 @@
+from strategic_alpha_engine.application.contracts.autopilot import (
+    AutopilotIterationRecord,
+    AutopilotManifest,
+    SubmissionPacketIndexRecord,
+)
 from strategic_alpha_engine.application.contracts.artifacts import (
     CandidateArtifactRecord,
     EvaluationArtifactRecord,
@@ -26,6 +31,8 @@ from strategic_alpha_engine.application.contracts.state import (
     ValidationBacklogEntry,
 )
 from strategic_alpha_engine.application.contracts.structured_generation import (
+    AgendaGeneratorPromptInput,
+    AgendaGeneratorPromptOutput,
     BlueprintBuilderPromptInput,
     BlueprintBuilderPromptOutput,
     FieldCatalogEntry,
@@ -36,7 +43,11 @@ from strategic_alpha_engine.application.contracts.structured_generation import (
 )
 
 __all__ = [
+    "AgendaGeneratorPromptInput",
+    "AgendaGeneratorPromptOutput",
     "AgendaQueueRecord",
+    "AutopilotIterationRecord",
+    "AutopilotManifest",
     "CandidateArtifactRecord",
     "CandidateStageRecord",
     "BrainSimulationPollResult",
@@ -55,6 +66,7 @@ __all__ = [
     "PromotionArtifactRecord",
     "RunStateRecord",
     "SubmissionPacketArtifactRecord",
+    "SubmissionPacketIndexRecord",
     "SubmissionPacketValidationSummary",
     "SubmissionReadyArtifactRecord",
     "SubmissionReadyCandidateRecord",

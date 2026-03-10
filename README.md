@@ -28,10 +28,16 @@ Current status:
   - [docs/phase4_robust_validation.ko.md](./docs/phase4_robust_validation.ko.md)
 - Phase 5 scope:
   - [docs/phase5_submission_prep_layer.ko.md](./docs/phase5_submission_prep_layer.ko.md)
+- Phase 6 scope:
+  - [docs/phase6_autopilot_alpha_factory.ko.md](./docs/phase6_autopilot_alpha_factory.ko.md)
+- Phase 2~6 incremental roadmap:
+  - [docs/phase2_incremental_delivery_plan.ko.md](./docs/phase2_incremental_delivery_plan.ko.md)
 - Operational readiness checklist:
   - [docs/operational_readiness_checklist.ko.md](./docs/operational_readiness_checklist.ko.md)
 - Submission packet runbook:
   - [docs/submission_packet_runbook.ko.md](./docs/submission_packet_runbook.ko.md)
+- Autopilot runbook:
+  - [docs/autopilot_runbook.ko.md](./docs/autopilot_runbook.ko.md)
 
 ## Quickstart
 
@@ -86,6 +92,7 @@ Inspect prompt assets and golden samples:
 ```bash
 python -m strategic_alpha_engine prompt --role planner
 python -m strategic_alpha_engine prompt --role critic --sample-id critic.quality_deterioration.001
+python -m strategic_alpha_engine prompt --role agenda_generator
 ```
 
 Run planning and synthesis separately:
@@ -129,6 +136,19 @@ python -m strategic_alpha_engine status --artifacts-dir artifacts
 
 # optional: persist the status summary report
 python -m strategic_alpha_engine status --artifacts-dir artifacts --out artifacts/reports/latest_status.json
+```
+
+Run the full autopilot alpha factory and emit a submission manifest:
+
+```bash
+# autopilot requires LLM settings, and worldquant mode also requires Brain settings
+python -m strategic_alpha_engine autopilot --artifacts-dir artifacts --brain-provider fake
+
+# production-style path: real LLM + real WorldQuant Brain
+python -m strategic_alpha_engine autopilot --artifacts-dir artifacts --brain-provider worldquant
+
+# inspect the latest manifest and cumulative packet index
+python -m strategic_alpha_engine status --artifacts-dir artifacts
 ```
 
 Inspect learner recommendations and optionally weight agendas:
@@ -191,7 +211,7 @@ src/strategic_alpha_engine/
 Current implementation includes:
 - domain schemas for agenda, hypothesis, blueprint, candidate, critique
 - metadata-backed static validator before critique
-- prompt assets and golden samples for planner / blueprint / critic roles
+- prompt assets and golden samples for agenda_generator / planner / blueprint / critic roles
 - standalone `plan`, `synthesize`, `simulate`, and `status` CLI workflows
 - immutable simulation request / run domain models
 - Brain simulation client contract and fake adapter
@@ -205,6 +225,10 @@ Current implementation includes:
 - pending human review queue created from promote runs
 - `review` CLI with approve / hold / reject decisions and human review ledgers
 - `packet` CLI with self-contained submission packet artifacts for approved candidates
+- `autopilot` CLI for agenda generation through packet + latest submission manifest
+- OpenAI-compatible structured LLM client with schema/empty-response retry policy
+- hybrid agenda generation with template seeding and LLM augmentation
+- autopilot submission packet index and latest submission manifest in local state
 - local file-based artifact ledger for run outputs
 - local manifest-based state ledger for candidate/run/family state and status summaries
 - optional real WorldQuant Brain simulation client behind `--brain-provider worldquant`
@@ -218,4 +242,4 @@ Current implementation includes:
 - rule-based strategic critic
 - `research-once` workflow scaffold
 
-Brain/vLLM adapters, persistent repositories, and real research loops are still intentionally left for the next phase.
+Automatic external submission and review UI are still intentionally left out of scope.

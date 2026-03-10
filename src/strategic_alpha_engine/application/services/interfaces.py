@@ -3,6 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
+from strategic_alpha_engine.application.contracts.autopilot import (
+    AutopilotIterationRecord,
+    AutopilotManifest,
+    SubmissionPacketIndexRecord,
+)
 from strategic_alpha_engine.application.contracts.artifacts import (
     CandidateArtifactRecord,
     EvaluationArtifactRecord,
@@ -29,6 +34,7 @@ from strategic_alpha_engine.application.contracts.state import (
     SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
+from strategic_alpha_engine.prompts.library import PromptAsset
 from strategic_alpha_engine.domain.evaluation import EvaluationRecord
 from strategic_alpha_engine.domain.critique_report import CritiqueReport
 from strategic_alpha_engine.domain.expression_candidate import ExpressionCandidate
@@ -44,8 +50,18 @@ from strategic_alpha_engine.domain.search_policy import (
 from strategic_alpha_engine.domain.signal_blueprint import SignalBlueprint
 from strategic_alpha_engine.domain.simulation import SimulationRequest, SimulationRun
 from strategic_alpha_engine.domain.static_validation import StaticValidationReport
-from strategic_alpha_engine.domain.enums import ValidationStage
+from strategic_alpha_engine.domain.enums import ResearchFamily, ValidationStage
 from strategic_alpha_engine.domain.validation import ValidationRecord
+
+
+class StructuredLLMClient(Protocol):
+    def generate_structured(
+        self,
+        *,
+        asset: PromptAsset,
+        input_payload: dict,
+        output_model: type,
+    ): ...
 
 
 class HypothesisPlanner(Protocol):
@@ -148,6 +164,17 @@ class ResearchAgendaManager(Protocol):
     ) -> AgendaSelection: ...
 
 
+class AgendaGenerator(Protocol):
+    def generate(
+        self,
+        *,
+        existing_agendas: list[ResearchAgenda],
+        queue_depth: int,
+        learner_summaries: list[FamilyLearnerSummary],
+        recent_failed_families: list[ResearchFamily],
+    ) -> list[ResearchAgenda]: ...
+
+
 class ArtifactLedger(Protocol):
     def write_context(
         self,
@@ -218,6 +245,36 @@ class ArtifactLedger(Protocol):
         records: list[SubmissionPacketArtifactRecord],
     ) -> Path: ...
 
+    def write_agenda_catalog_records(
+        self,
+        run_id: str,
+        records: list[ResearchAgenda],
+    ) -> Path: ...
+
+    def write_agenda_generation_summary(
+        self,
+        run_id: str,
+        payload: dict,
+    ) -> Path: ...
+
+    def write_autopilot_iterations(
+        self,
+        run_id: str,
+        records: list[AutopilotIterationRecord],
+    ) -> Path: ...
+
+    def write_autopilot_manifest(
+        self,
+        run_id: str,
+        manifest: AutopilotManifest,
+    ) -> Path: ...
+
+    def write_auto_review_records(
+        self,
+        run_id: str,
+        records: list[HumanReviewArtifactRecord],
+    ) -> Path: ...
+
 
 class StateLedger(Protocol):
     def append_candidate_stage_records(self, records: list[CandidateStageRecord]) -> Path: ...
@@ -238,6 +295,13 @@ class StateLedger(Protocol):
 
     def append_human_review_decisions(self, records: list[HumanReviewDecision]) -> Path: ...
 
+    def append_submission_packet_index_records(
+        self,
+        records: list[SubmissionPacketIndexRecord],
+    ) -> Path: ...
+
+    def write_latest_submission_manifest(self, manifest: AutopilotManifest) -> Path: ...
+
     def load_candidate_stage_records(self) -> list[CandidateStageRecord]: ...
 
     def load_run_state_records(self) -> list[RunStateRecord]: ...
@@ -255,3 +319,7 @@ class StateLedger(Protocol):
     def load_human_review_queue_records(self) -> list[HumanReviewQueueRecord]: ...
 
     def load_human_review_decisions(self) -> list[HumanReviewDecision]: ...
+
+    def load_submission_packet_index_records(self) -> list[SubmissionPacketIndexRecord]: ...
+
+    def load_latest_submission_manifest(self) -> AutopilotManifest | None: ...

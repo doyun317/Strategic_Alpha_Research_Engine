@@ -1,4 +1,5 @@
 from strategic_alpha_engine.config.settings import (
+    AutopilotSettings,
     BrainSettings,
     EngineEnvironment,
     LogLevel,
@@ -8,6 +9,7 @@ from strategic_alpha_engine.config.settings import (
 )
 
 __all__ = [
+    "AutopilotSettings",
     "BrainSettings",
     "EngineEnvironment",
     "LogLevel",

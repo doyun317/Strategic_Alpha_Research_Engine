@@ -1,0 +1,76 @@
+{
+  "sample_id": "agenda_generator.autopilot.001",
+  "prompt_id": "agenda_generator.default.v1",
+  "role": "agenda_generator",
+  "input_payload": {
+    "family_recommendations": [
+      {
+        "family": "quality_deterioration",
+        "rank": 1,
+        "final_score": 0.78,
+        "exploit_score": 0.66,
+        "exploration_bonus": 0.18,
+        "risk_penalty": 0.06,
+        "reasons": ["stage_a_pass_rate_above_threshold", "submission_ready_rate_supportive"],
+        "latest_run_id": "simulate.quality_deterioration.001",
+        "updated_at": "2026-01-20T10:00:00Z"
+      },
+      {
+        "family": "revision_drift",
+        "rank": 2,
+        "final_score": 0.71,
+        "exploit_score": 0.58,
+        "exploration_bonus": 0.22,
+        "risk_penalty": 0.09,
+        "reasons": ["positive_sharpe_median", "low_timeout_rate"],
+        "latest_run_id": "simulate.revision_drift.001",
+        "updated_at": "2026-01-20T10:00:00Z"
+      }
+    ],
+    "recent_failed_families": ["liquidity_stress"],
+    "recent_agenda_hashes": ["45c28499276310f1", "8a6a1f1ce2f9811e"],
+    "queue_depth": 2,
+    "target_region": "USA",
+    "target_universe": "TOP3000",
+    "enabled_families": ["quality_deterioration", "revision_drift", "momentum"],
+    "output_contract": "AgendaGeneratorPromptOutput"
+  },
+  "output_payload": {
+    "agendas": [
+      {
+        "agenda_id": "agenda.autollm.quality_deterioration.002",
+        "name": "Quality deterioration with leverage acceleration",
+        "family": "quality_deterioration",
+        "priority": 0.74,
+        "target_region": "USA",
+        "target_universe": "TOP3000",
+        "target_horizons": ["medium"],
+        "motivation": "Probe whether accelerating leverage combined with weakening cash generation produces a medium-horizon quality deterioration signal under conservative normalization.",
+        "constraints": ["require_cross_sectional_normalization", "avoid_short_delay_on_fundamentals"],
+        "tags": ["quality_deterioration", "medium", "autopilot"],
+        "owner": "autopilot_llm",
+        "status": "backlog"
+      },
+      {
+        "agenda_id": "agenda.autollm.revision_drift.001",
+        "name": "Revision drift with estimate stabilization",
+        "family": "revision_drift",
+        "priority": 0.69,
+        "target_region": "USA",
+        "target_universe": "TOP3000",
+        "target_horizons": ["medium"],
+        "motivation": "Probe whether medium-horizon estimate revision drift remains predictive when combined with conservative stabilization and explicit outer ranking.",
+        "constraints": ["require_cross_sectional_normalization", "avoid_trade_when"],
+        "tags": ["revision_drift", "medium", "autopilot"],
+        "owner": "autopilot_llm",
+        "status": "active"
+      }
+    ],
+    "generator_notes": [
+      "Returned one agenda from the top-ranked family and one from a secondary family for diversification."
+    ]
+  },
+  "notes": [
+    "Golden sample for autopilot agenda generation contract validation."
+  ]
+}

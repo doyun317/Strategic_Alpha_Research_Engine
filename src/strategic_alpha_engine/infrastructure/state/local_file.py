@@ -5,11 +5,13 @@ from pathlib import Path
 
 from strategic_alpha_engine.application.contracts import (
     AgendaQueueRecord,
+    AutopilotManifest,
     CandidateStageRecord,
     FamilyLearnerSummary,
     FamilyStatsSnapshot,
     HumanReviewQueueRecord,
     RunStateRecord,
+    SubmissionPacketIndexRecord,
     SubmissionReadyCandidateRecord,
     ValidationBacklogEntry,
 )
@@ -72,6 +74,22 @@ class LocalFileStateLedger:
         self._append_jsonl(path, [record.model_dump(mode="json") for record in records])
         return path
 
+    def append_submission_packet_index_records(
+        self,
+        records: list[SubmissionPacketIndexRecord],
+    ) -> Path:
+        path = self.state_directory() / "submission_packet_index.jsonl"
+        self._append_jsonl(path, [record.model_dump(mode="json") for record in records])
+        return path
+
+    def write_latest_submission_manifest(self, manifest: AutopilotManifest) -> Path:
+        path = self.state_directory() / "latest_submission_manifest.json"
+        path.write_text(
+            json.dumps(manifest.model_dump(mode="json"), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return path
+
     def load_candidate_stage_records(self) -> list[CandidateStageRecord]:
         path = self.state_directory() / "candidate_stages.jsonl"
         return [CandidateStageRecord(**payload) for payload in self._read_jsonl(path)]
@@ -113,6 +131,17 @@ class LocalFileStateLedger:
     def load_human_review_decisions(self) -> list[HumanReviewDecision]:
         path = self.state_directory() / "human_review_decisions.jsonl"
         return [HumanReviewDecision(**payload) for payload in self._read_jsonl(path)]
+
+    def load_submission_packet_index_records(self) -> list[SubmissionPacketIndexRecord]:
+        path = self.state_directory() / "submission_packet_index.jsonl"
+        return [SubmissionPacketIndexRecord(**payload) for payload in self._read_jsonl(path)]
+
+    def load_latest_submission_manifest(self) -> AutopilotManifest | None:
+        path = self.state_directory() / "latest_submission_manifest.json"
+        if not path.exists():
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return AutopilotManifest(**payload)
 
     def _append_jsonl(self, path: Path, payloads: list[dict]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

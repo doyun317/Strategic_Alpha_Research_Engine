@@ -1,3 +1,7 @@
+from strategic_alpha_engine.application.workflows.autopilot import (
+    AutopilotWorkflow,
+    AutopilotWorkflowResult,
+)
 from strategic_alpha_engine.application.workflows.evaluate_stage_a import (
     StageACandidateOutcome,
     StageAEvaluationResult,
@@ -51,6 +55,8 @@ from strategic_alpha_engine.application.workflows.validate import (
 )
 
 __all__ = [
+    "AutopilotWorkflow",
+    "AutopilotWorkflowResult",
     "CandidateEvaluation",
     "HumanReviewOutcome",
     "HumanReviewResult",

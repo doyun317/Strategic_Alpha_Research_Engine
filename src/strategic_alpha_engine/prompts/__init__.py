@@ -1,6 +1,7 @@
 from strategic_alpha_engine.prompts.library import (
     PromptAsset,
     PromptGoldenSample,
+    PromptRole,
     load_prompt_asset,
     load_prompt_golden_sample,
     list_prompt_assets,
@@ -11,6 +12,7 @@ from strategic_alpha_engine.prompts.library import (
 __all__ = [
     "PromptAsset",
     "PromptGoldenSample",
+    "PromptRole",
     "load_prompt_asset",
     "load_prompt_golden_sample",
     "list_prompt_assets",

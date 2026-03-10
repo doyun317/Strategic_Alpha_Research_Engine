@@ -1,5 +1,13 @@
+from strategic_alpha_engine.application.services.agenda_generation import (
+    HybridAgendaGenerator,
+    LLMAgendaAugmentor,
+    TemplateAgendaGenerator,
+    agenda_dedupe_key,
+    dedupe_agendas,
+)
 from strategic_alpha_engine.application.services.agenda_manager import HeuristicResearchAgendaManager
 from strategic_alpha_engine.application.services.interfaces import (
+    AgendaGenerator,
     AgendaPrioritizer,
     ArtifactLedger,
     BrainSimulationClient,
@@ -10,6 +18,7 @@ from strategic_alpha_engine.application.services.interfaces import (
     PromotionDecider,
     ResearchAgendaManager,
     SearchPolicyLearner,
+    StructuredLLMClient,
     StateLedger,
     StageAEvaluator,
     ValidationRunner,
@@ -19,6 +28,11 @@ from strategic_alpha_engine.application.services.interfaces import (
 from strategic_alpha_engine.application.services.family_analytics import (
     FamilyAnalyticsBundle,
     LocalArtifactFamilyAnalyticsBuilder,
+)
+from strategic_alpha_engine.application.services.llm_backed_generation import (
+    LLMBlueprintBuilder,
+    LLMHypothesisPlanner,
+    LLMStrategicCritic,
 )
 from strategic_alpha_engine.application.services.static_validator import MetadataBackedStaticValidator
 from strategic_alpha_engine.application.services.rule_based_critic import RuleBasedStrategicCritic
@@ -46,22 +60,31 @@ from strategic_alpha_engine.application.services.static_planners import (
 )
 
 __all__ = [
+    "AgendaGenerator",
     "HeuristicResearchAgendaManager",
+    "HybridAgendaGenerator",
+    "agenda_dedupe_key",
     "ArtifactLedger",
     "AgendaPrioritizer",
     "BrainSimulationClient",
     "BlueprintBuilder",
     "CandidateSynthesizer",
+    "dedupe_agendas",
     "FamilyAnalyticsBuilder",
     "FamilyAnalyticsBundle",
     "FamilyWeightedAgendaPrioritizer",
     "HeuristicSearchPolicyLearner",
     "HypothesisPlanner",
+    "LLMAgendaAugmentor",
+    "LLMBlueprintBuilder",
+    "LLMHypothesisPlanner",
+    "LLMStrategicCritic",
     "LocalArtifactFamilyAnalyticsBuilder",
     "MetadataBackedStaticValidator",
     "PromotionDecider",
     "ResearchAgendaManager",
     "SearchPolicyLearner",
+    "StructuredLLMClient",
     "RuleBasedStrategicCritic",
     "RuleBasedRobustPromotionDecider",
     "RuleBasedStageAEvaluator",
@@ -73,6 +96,7 @@ __all__ = [
     "StageAEvaluator",
     "StageAThresholds",
     "StaticValidator",
+    "TemplateAgendaGenerator",
     "StaticBlueprintBuilder",
     "StaticHypothesisPlanner",
     "StrategicCritic",

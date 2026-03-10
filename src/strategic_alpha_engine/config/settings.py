@@ -8,6 +8,7 @@ from typing import Mapping
 from pydantic import Field
 
 from strategic_alpha_engine.domain.base import EngineModel
+from strategic_alpha_engine.domain.enums import CandidateLifecycleStage
 
 
 class EngineEnvironment(str, Enum):
@@ -39,6 +40,17 @@ class BrainSettings(EngineModel):
     max_polls: int = Field(default=120, ge=1, le=10000)
 
 
+class AutopilotSettings(EngineModel):
+    target_packet_count: int = Field(default=20, ge=1, le=10000)
+    packet_top_k: int = Field(default=20, ge=1, le=10000)
+    min_queue_depth: int = Field(default=5, ge=1, le=1000)
+    idle_rounds: int = Field(default=10, ge=1, le=10000)
+    max_agendas: int = Field(default=200, ge=1, le=100000)
+    max_simulations: int = Field(default=500, ge=1, le=100000)
+    auto_approve: bool = True
+    packet_min_stage: CandidateLifecycleStage = CandidateLifecycleStage.ROBUST_CANDIDATE
+
+
 class RuntimeSettings(EngineModel):
     resolved_settings_dir: str = Field(min_length=1, max_length=500)
     loaded_env_files: list[str] = Field(default_factory=list, max_length=8)
@@ -51,6 +63,7 @@ class RuntimeSettings(EngineModel):
     simulation_neutralization: str = Field(default="subindustry", min_length=2, max_length=64)
     llm: LLMSettings | None = None
     brain: BrainSettings | None = None
+    autopilot: AutopilotSettings = Field(default_factory=AutopilotSettings)
 
 
 _DEFAULT_ENV_FILES = ("default.env", "local.env", "llm.env", "brain.env")
@@ -62,6 +75,16 @@ _BRAIN_KEYS = (
     "SAE_BRAIN_SUBMIT_TIMEOUT_SECONDS",
     "SAE_BRAIN_POLL_INTERVAL_SECONDS",
     "SAE_BRAIN_MAX_POLLS",
+)
+_AUTOPILOT_KEYS = (
+    "SAE_AUTOPILOT_TARGET_PACKET_COUNT",
+    "SAE_AUTOPILOT_PACKET_TOP_K",
+    "SAE_AUTOPILOT_MIN_QUEUE_DEPTH",
+    "SAE_AUTOPILOT_IDLE_ROUNDS",
+    "SAE_AUTOPILOT_MAX_AGENDAS",
+    "SAE_AUTOPILOT_MAX_SIMULATIONS",
+    "SAE_AUTOPILOT_AUTO_APPROVE",
+    "SAE_AUTOPILOT_PACKET_MIN_STAGE",
 )
 
 
@@ -156,6 +179,22 @@ def _build_brain_settings(values: Mapping[str, str]) -> BrainSettings | None:
     )
 
 
+def _build_autopilot_settings(values: Mapping[str, str]) -> AutopilotSettings:
+    return AutopilotSettings(
+        target_packet_count=values.get("SAE_AUTOPILOT_TARGET_PACKET_COUNT", 20),
+        packet_top_k=values.get("SAE_AUTOPILOT_PACKET_TOP_K", 20),
+        min_queue_depth=values.get("SAE_AUTOPILOT_MIN_QUEUE_DEPTH", 5),
+        idle_rounds=values.get("SAE_AUTOPILOT_IDLE_ROUNDS", 10),
+        max_agendas=values.get("SAE_AUTOPILOT_MAX_AGENDAS", 200),
+        max_simulations=values.get("SAE_AUTOPILOT_MAX_SIMULATIONS", 500),
+        auto_approve=values.get("SAE_AUTOPILOT_AUTO_APPROVE", True),
+        packet_min_stage=values.get(
+            "SAE_AUTOPILOT_PACKET_MIN_STAGE",
+            CandidateLifecycleStage.ROBUST_CANDIDATE,
+        ),
+    )
+
+
 def load_runtime_settings(
     settings_dir: str | Path | None = None,
     environ: Mapping[str, str] | None = None,
@@ -183,6 +222,7 @@ def load_runtime_settings(
         ),
         llm=_build_llm_settings(merged_values),
         brain=_build_brain_settings(merged_values),
+        autopilot=_build_autopilot_settings(merged_values),
     )
 
     if require_llm and settings.llm is None:
