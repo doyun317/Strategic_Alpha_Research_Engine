@@ -2,19 +2,19 @@ import pytest
 
 from strategic_alpha_engine.application.services import (
     MetadataBackedStaticValidator,
-    RuleBasedStrategicCritic,
     SkeletonCandidateSynthesizer,
 )
 from strategic_alpha_engine.application.workflows import SynthesizeWorkflow
 from strategic_alpha_engine.domain.examples import build_sample_hypothesis_spec, build_sample_signal_blueprint
 from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
+from strategic_alpha_engine.testing import SampleStrategicCritic
 
 
 def test_synthesize_workflow_produces_evaluations():
     workflow = SynthesizeWorkflow(
         candidate_synthesizer=SkeletonCandidateSynthesizer(),
         static_validator=MetadataBackedStaticValidator(load_seed_metadata_catalog()),
-        strategic_critic=RuleBasedStrategicCritic(),
+        strategic_critic=SampleStrategicCritic(),
     )
 
     result = workflow.run(
@@ -30,7 +30,7 @@ def test_synthesize_workflow_rejects_mismatched_hypothesis_and_blueprint():
     workflow = SynthesizeWorkflow(
         candidate_synthesizer=SkeletonCandidateSynthesizer(),
         static_validator=MetadataBackedStaticValidator(load_seed_metadata_catalog()),
-        strategic_critic=RuleBasedStrategicCritic(),
+        strategic_critic=SampleStrategicCritic(),
     )
     hypothesis = build_sample_hypothesis_spec().model_copy(update={"hypothesis_id": "hyp.other.001"})
 
