@@ -35,7 +35,6 @@ from strategic_alpha_engine.application.services.llm_backed_generation import (
     LLMStrategicCritic,
 )
 from strategic_alpha_engine.application.services.static_validator import MetadataBackedStaticValidator
-from strategic_alpha_engine.application.services.rule_based_critic import RuleBasedStrategicCritic
 from strategic_alpha_engine.application.services.rule_based_stage_a import (
     RuleBasedStageAEvaluator,
     RuleBasedStageAPromotionDecider,
@@ -54,10 +53,6 @@ from strategic_alpha_engine.application.services.search_policy import (
     HeuristicSearchPolicyLearner,
 )
 from strategic_alpha_engine.application.services.skeleton_synthesizer import SkeletonCandidateSynthesizer
-from strategic_alpha_engine.application.services.static_planners import (
-    StaticBlueprintBuilder,
-    StaticHypothesisPlanner,
-)
 
 __all__ = [
     "AgendaGenerator",
@@ -85,7 +80,6 @@ __all__ = [
     "ResearchAgendaManager",
     "SearchPolicyLearner",
     "StructuredLLMClient",
-    "RuleBasedStrategicCritic",
     "RuleBasedRobustPromotionDecider",
     "RuleBasedStageAEvaluator",
     "RuleBasedStageAPromotionDecider",
@@ -97,8 +91,6 @@ __all__ = [
     "StageAThresholds",
     "StaticValidator",
     "TemplateAgendaGenerator",
-    "StaticBlueprintBuilder",
-    "StaticHypothesisPlanner",
     "StrategicCritic",
     "ValidationRunner",
     "candidate_signature",

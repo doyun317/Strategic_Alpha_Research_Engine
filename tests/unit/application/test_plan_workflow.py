@@ -1,13 +1,9 @@
-from strategic_alpha_engine.application.services import StaticBlueprintBuilder, StaticHypothesisPlanner
-from strategic_alpha_engine.application.workflows import PlanWorkflow
 from strategic_alpha_engine.domain.examples import build_sample_research_agenda
+from strategic_alpha_engine.testing import build_sample_plan_workflow
 
 
 def test_plan_workflow_builds_hypothesis_and_blueprint():
-    workflow = PlanWorkflow(
-        hypothesis_planner=StaticHypothesisPlanner(),
-        blueprint_builder=StaticBlueprintBuilder(),
-    )
+    workflow = build_sample_plan_workflow()
 
     result = workflow.run(build_sample_research_agenda())
 

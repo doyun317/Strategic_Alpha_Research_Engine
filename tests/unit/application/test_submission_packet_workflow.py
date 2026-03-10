@@ -1,20 +1,14 @@
 from datetime import datetime, timezone
 
 from strategic_alpha_engine.application.services import (
-    MetadataBackedStaticValidator,
     RuleBasedRobustPromotionDecider,
     RuleBasedStageAEvaluator,
     RuleBasedStageAPromotionDecider,
-    RuleBasedStrategicCritic,
     RuleBasedValidationRunner,
-    SkeletonCandidateSynthesizer,
-    StaticBlueprintBuilder,
-    StaticHypothesisPlanner,
 )
 from strategic_alpha_engine.application.workflows import (
     HumanReviewWorkflow,
     MultiPeriodValidateWorkflow,
-    PlanWorkflow,
     RobustPromotionWorkflow,
     SimulationExecutionPolicy,
     SimulationOrchestratorWorkflow,
@@ -22,28 +16,16 @@ from strategic_alpha_engine.application.workflows import (
     SubmissionPacketBundle,
     SubmissionPacketWorkflow,
     SubmissionReadyPromotionWorkflow,
-    SynthesizeWorkflow,
     ValidateWorkflow,
 )
 from strategic_alpha_engine.domain.enums import HumanReviewDecisionKind, ValidationStage
-from strategic_alpha_engine.domain.examples import build_sample_research_agenda
 from strategic_alpha_engine.infrastructure import FakeBrainSimulationClient, LocalFileArtifactLedger
-from strategic_alpha_engine.infrastructure.metadata import load_seed_metadata_catalog
+from strategic_alpha_engine.testing import build_sample_plan_result, build_sample_synthesize_result
 
 
 def test_submission_packet_workflow_builds_self_contained_packet():
-    plan_result = PlanWorkflow(
-        hypothesis_planner=StaticHypothesisPlanner(),
-        blueprint_builder=StaticBlueprintBuilder(),
-    ).run(build_sample_research_agenda())
-    synthesize_result = SynthesizeWorkflow(
-        candidate_synthesizer=SkeletonCandidateSynthesizer(),
-        static_validator=MetadataBackedStaticValidator(load_seed_metadata_catalog()),
-        strategic_critic=RuleBasedStrategicCritic(),
-    ).run(
-        hypothesis=plan_result.hypothesis,
-        blueprint=plan_result.blueprint,
-    )
+    plan_result = build_sample_plan_result()
+    synthesize_result = build_sample_synthesize_result(plan_result)
     simulation_result = SimulationOrchestratorWorkflow(
         brain_client=FakeBrainSimulationClient(),
         max_polls=3,
