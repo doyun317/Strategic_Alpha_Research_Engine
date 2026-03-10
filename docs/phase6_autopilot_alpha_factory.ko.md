@@ -120,10 +120,12 @@
 
 ## 6. 구현 원칙
 
-### 6.1 기존 수동 CLI는 유지
+### 6.1 운영 인터페이스는 autopilot 하나로 고정
 
-`simulate`, `validate`, `promote`, `review`, `packet`, `research-loop`를 없애지 않고,
-운영용 자동화는 `autopilot`으로 분리한다.
+초기 구현 단계에서는 여러 standalone 진입점이 있었지만,
+현재 공개 CLI surface는 `autopilot` 하나만 운영 경로로 유지한다.
+planning, synthesis, simulation, validation, promotion, review, packet generation은
+이제 모두 internal engine stage로 남는다.
 
 ### 6.2 Auto review도 lineage를 남김
 

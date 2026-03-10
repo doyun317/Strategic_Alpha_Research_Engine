@@ -1,5 +1,9 @@
 # Strategic Alpha Research Engine Phase 1 구현 범위
 
+현재 이 문서는 초기 구조 설계에 대한 기록 문서다.
+운영용 공개 인터페이스는 이제 `autopilot` 중심으로 정리되었고,
+아래 내용은 현재 CLI surface가 아니라 초기 foundation 구현 이력을 설명한다.
+
 ## 1. 문서 목적
 
 이 문서는 MVP 다음 단계로 구현할 `structured generation foundation` 범위를 고정하기 위한 문서다.
@@ -21,8 +25,8 @@
 4. planner / blueprint builder / synthesizer / critic contract 정의
 5. skeleton 기반 candidate synthesizer 구현
 6. rule-based strategic critic 구현
-7. `research-once` workflow skeleton 구현
-8. CLI로 sample `research-once` 실행 가능하게 만들기
+7. 단일 실행용 초기 workflow skeleton 구현
+8. sample single-run 흐름으로 foundation 검증 가능하게 만들기
 
 ## 3. 이번 단계 in-scope
 
@@ -60,7 +64,7 @@
 ### 3.5 Workflow
 
 포함:
-- `ResearchOnceWorkflow`
+- 초기 single-run workflow
 - sample agenda 기반 실행
 - accepted / rejected candidate 분리
 
@@ -115,7 +119,7 @@ candidate를 만들었으면 critic을 반드시 거쳐야 한다.
 1. 새로운 도메인 모델 3종
 2. service interface 정의
 3. prompt contract 정의
-4. sample research-once workflow
+4. sample single-run workflow
 5. CLI 실행 진입점
 6. pytest 통과
 
@@ -123,7 +127,7 @@ candidate를 만들었으면 critic을 반드시 거쳐야 한다.
 
 이번 단계는 아래를 만족하면 성공이다.
 
-1. sample agenda로 research-once를 실행할 수 있다.
+1. sample agenda로 초기 single-run foundation을 검증할 수 있다.
 2. workflow가 hypothesis, blueprint, candidate, critique를 모두 생성한다.
 3. critic이 구조적으로 잘못된 candidate를 reject할 수 있다.
 4. synthesizer가 skeleton과 blueprint를 바탕으로 deterministic하게 candidate를 만들 수 있다.
@@ -132,4 +136,3 @@ candidate를 만들었으면 critic을 반드시 거쳐야 한다.
 ## 8. 한 줄 요약
 
 이번 단계는 "전략적으로 생성하기 위한 구조를 실제 코드의 workflow로 연결하는 첫 단계"다.
-

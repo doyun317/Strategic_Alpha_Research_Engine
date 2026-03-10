@@ -6,6 +6,10 @@
 [target_greenfield_alpha_research_architecture.ko.md](./target_greenfield_alpha_research_architecture.ko.md)
 spec에 맞게 다시 정렬한 실행 계획이다.
 
+현재는 이 로드맵의 구현이 모두 완료되었고,
+운영용 공개 인터페이스는 `autopilot` 중심으로 재정리된 상태다.
+아래 표의 standalone entrypoint 관련 항목은 구현 이력 기록으로 읽는 것이 맞다.
+
 핵심 원칙은 아래와 같다.
 
 1. 각 브랜치는 한 책임만 가진다.
@@ -109,18 +113,18 @@ git checkout -b phase2/2-3-static-validator
 | 2-2 | `phase2/2-2-metadata-catalog` | 11.3 Metadata Intelligence Layer | field/operator metadata catalog 추가 | catalog load, filtering, lookup 테스트 통과 | `completed` |
 | 2-3 | `phase2/2-3-static-validator` | 11.7 Static Validator | compiler-safe validator 추가 | invalid expression 차단 테스트 통과 | `completed` |
 | 2-4 | `phase2/2-4-prompt-assets-and-golden-samples` | 15, 16 Prompt Strategy | planner/blueprint/critic prompt 파일 분리와 golden sample 테스트 기초 추가 | prompt asset 로딩 및 golden sample 테스트 통과 | `completed` |
-| 2-5 | `phase2/2-5-plan-and-synthesize-cli` | 14.1, 14.2 실행 모드 | `plan`, `synthesize` CLI 추가 | agenda -> hypothesis -> blueprint / blueprint -> candidate+critique 분리 실행 가능 | `completed` |
+| 2-5 | `phase2/2-5-plan-and-synthesize-cli` | 14.1, 14.2 실행 모드 | historical standalone planning/synthesis entrypoints 추가 | agenda -> hypothesis -> blueprint / blueprint -> candidate+critique 분리 실행 가능 | `completed` |
 | 2-6 | `phase2/2-6-simulation-domain` | 10.6, 11.8 | immutable `SimulationRequest`, `SimulationRun` 도메인 추가 | request/run validation 테스트 통과 | `completed` |
 | 2-7 | `phase2/2-7-brain-client-contract` | 9.3, 11.8 | Brain adapter contract와 fake adapter 추가 | fake submit/poll/fetch 테스트 가능 | `completed` |
 | 2-8 | `phase2/2-8-simulation-orchestrator` | 11.8 | critique 통과 후보 simulation orchestration 구현 | submit/poll/result 흐름 테스트 통과 | `completed` |
 | 2-9 | `phase2/2-9-local-artifact-ledger` | 12.2 Artifact Store | run artifact를 로컬 JSON/JSONL로 저장 | run_id 기준 artifact 저장 확인 | `completed` |
 | 2-10 | `phase2/2-10-local-state-ledger` | 12.3 State Store | candidate stage / run state / family stats를 로컬 manifest로 저장 | 상태 전이 기록과 재로딩 확인 | `completed` |
-| 2-11 | `phase2/2-11-simulate-and-status-cli` | 14.3, 14.8 실행 모드 | `simulate`, `status` CLI 추가 | simulate 실행과 status summary 출력 가능 | `completed` |
+| 2-11 | `phase2/2-11-simulate-and-status-cli` | 14.3, 14.8 실행 모드 | historical standalone simulation/status entrypoints 추가 | simulation 실행과 status summary 출력 가능 | `completed` |
 | 2-12 | `phase2/2-12-evaluation-record-and-stage-a-promotion` | 11.9, 11.10 | `EvaluationRecord`와 Stage A 승격 구현 | `draft -> critique_passed -> sim_passed` 전이 확인 | `completed` |
 | 3-1 | `phase3/3-1-family-stats-ledger` | Phase 3, 11.11 | family 성과 집계 구조 추가 | family stats 갱신 테스트 통과 | `completed` |
 | 3-2 | `phase3/3-2-search-policy-learner` | 11.11 | heuristic search policy learner 추가 | family weighting / prioritization 테스트 통과 | `completed` |
-| 3-3 | `phase3/3-3-agenda-manager-and-research-loop` | 11.1, 14.5 | agenda manager와 `research-loop` 기초 추가 | loop 1회 실행 및 agenda selection 확인 | `completed` |
-| 4-1 | `phase4/4-1-validation-domain-and-cli` | 10.7, 14.6 | `ValidationRecord` 도메인과 `validate` CLI 추가 | validation input/output 구조 테스트 통과 | `completed` |
+| 3-3 | `phase3/3-3-agenda-manager-and-research-loop` | 11.1, 14.5 | agenda manager와 bounded runner 기초 추가 | loop 1회 실행 및 agenda selection 확인 | `completed` |
+| 4-1 | `phase4/4-1-validation-domain-and-cli` | 10.7, 14.6 | `ValidationRecord` 도메인과 validation entrypoint 추가 | validation input/output 구조 테스트 통과 | `completed` |
 | 4-2 | `phase4/4-2-multi-period-validation-runner` | 11.9, Phase 4 | Stage B/C 다중 기간 검증 runner 추가 | `P1Y0M0D`, `P3Y0M0D`, `P5Y0M0D` validation matrix와 aggregate rule 확인 | `completed` |
 | 4-3 | `phase4/4-3-robust-candidate-promotion` | 11.10, Phase 4 | robust candidate 승격 규칙 추가 | validation matrix와 diversity guard를 반영한 `sim_passed -> robust_candidate` 전이 확인 | `completed` |
 | 5-1 | `phase5/5-1-submission-ready-ledger` | 10.8, Phase 5 | submission-ready 상태 기록 구조 추가 | submission-ready 후보 ledger 생성 확인 | `completed` |
@@ -220,19 +224,18 @@ git checkout -b phase2/2-3-static-validator
 ## 11. `5-3` 종료 조건
 
 - `pytest` 통과
-- `review` CLI가 queue update와 review decision artifact를 정상 기록함
+- review stage가 queue update와 review decision artifact를 정상 기록함
 - `status`에서 `human_review_queue`와 `human_review_summary`가 조회 가능함
-- `packet` CLI가 approved 후보를 self-contained artifact로 저장함
+- packet stage가 approved 후보를 self-contained artifact로 저장함
 - `status`에서 `submission_packet_summary`가 조회 가능함
 
 ## 12. Phase 6 Autopilot 확장
 
-Phase 5까지는 운영자가 `simulate -> validate -> promote -> review -> packet`를 수동으로 이어 붙여야 했다.
-
-Phase 6에서는 이 한계를 없애고, 아래 경로를 `autopilot` 실행으로 통합했다.
+Phase 5까지는 각 단계가 독립적으로 구현되어 있었고,
+Phase 6에서 이들을 하나의 `autopilot` 실행으로 통합했다.
 
 - agenda 자동 생성
-- LLM-backed `plan` / `synthesize` / `critic`
+- LLM-backed planning / synthesis / critic
 - Brain simulation
 - Stage B validation
 - robust candidate 선별
@@ -249,9 +252,6 @@ Phase 6에서는 이 한계를 없애고, 아래 경로를 `autopilot` 실행으
 - `state/submission_packet_index.jsonl`
 - `state/latest_submission_manifest.json`
 
-Phase 6 이후 운영 기본 경로는 아래 둘로 나뉜다.
-
-1. 수동 제어가 필요할 때:
-   - 기존 `simulate`, `validate`, `promote`, `review`, `packet`
-2. 대량 자동 생성과 packet 적재가 목적일 때:
-   - `autopilot`
+현재 운영 기본 경로는 `autopilot` 하나다.
+이전 standalone entrypoint들은 내부 engine stage로 남아 있으며,
+사용자는 `autopilot -> status -> latest_submission_manifest.json` 흐름으로 결과를 검토한다.
