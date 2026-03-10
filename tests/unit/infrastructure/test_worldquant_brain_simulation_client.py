@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timezone
 
+import pytest
+
 from strategic_alpha_engine.config import BrainSettings
 from strategic_alpha_engine.domain.enums import SimulationStatus
 from strategic_alpha_engine.domain.examples import build_sample_simulation_request
@@ -92,7 +94,9 @@ def test_worldquant_brain_client_submit_poll_and_fetch_result():
     third_poll = client.poll(submission.provider_run_id)
     result = client.fetch_result(submission.provider_run_id)
 
+    submit_payload = session.request_calls[0][2]
     assert submission.provider_run_id == "https://api.worldquantbrain.com/simulations/progress/123"
+    assert submit_payload["settings"]["neutralization"] == "SUBINDUSTRY"
     assert first_poll.status == SimulationStatus.SUBMITTED
     assert second_poll.status == SimulationStatus.RUNNING
     assert third_poll.status == SimulationStatus.SUCCEEDED
@@ -174,3 +178,45 @@ def test_worldquant_brain_client_waits_on_rate_limit_retry_after():
 
     assert poll.status == SimulationStatus.RUNNING
     assert slept == [2.5]
+
+
+def test_worldquant_brain_client_maps_progress_only_payload_to_running():
+    session = _FakeSession(
+        auth_responses=[_FakeResponse(201)],
+        request_responses=[
+            _FakeResponse(201, headers={"Location": "/simulations/progress/progress-only"}),
+            _FakeResponse(200, json_payload={"progress": 0.35}),
+        ],
+    )
+    client = WorldQuantBrainSimulationClient(
+        _build_settings(),
+        session=session,
+        sleep=lambda _: None,
+        now_fn=lambda: datetime(2026, 3, 9, 8, 33, tzinfo=timezone.utc),
+        monotonic_fn=lambda: 0.0,
+    )
+
+    submission = client.submit(build_sample_simulation_request())
+    poll = client.poll(submission.provider_run_id)
+
+    assert poll.status == SimulationStatus.RUNNING
+
+
+def test_worldquant_brain_client_rejects_unknown_neutralization():
+    session = _FakeSession(
+        auth_responses=[_FakeResponse(201)],
+        request_responses=[],
+    )
+    client = WorldQuantBrainSimulationClient(
+        _build_settings(),
+        session=session,
+        sleep=lambda _: None,
+        now_fn=lambda: datetime(2026, 3, 9, 8, 34, tzinfo=timezone.utc),
+        monotonic_fn=lambda: 0.0,
+    )
+    request = build_sample_simulation_request().model_copy(
+        update={"neutralization": "mystery_bucket"}
+    )
+
+    with pytest.raises(ValueError, match="unsupported WorldQuant Brain neutralization value"):
+        client.submit(request)
