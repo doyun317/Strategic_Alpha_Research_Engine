@@ -171,7 +171,6 @@ class RunKind(str, Enum):
     PLAN = "plan"
     SYNTHESIZE = "synthesize"
     SIMULATE = "simulate"
-    RESEARCH_ONCE = "research_once"
     VALIDATE = "validate"
     PROMOTE = "promote"
     REVIEW = "review"
